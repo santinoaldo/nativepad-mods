@@ -110,9 +110,11 @@ final class Hallucinations {
         double body(double t, boolean wantJump) {
             landed = false;
             double now = floorAt(t), ahead = floorAt(t + 3.0 / ticks);
+            // Parkour: the hole starts on the next step, so jump right at the edge for the longest jump.
+            boolean holeNext = floorAt(t + 1.0 / ticks) == GAP;
             if (Double.isNaN(bodyY)) bodyY = now;
             if (!inAir) {
-                if (ahead > bodyY + 0.01 || wantJump) {
+                if (ahead > bodyY + 0.01 || wantJump || holeNext) {
                     inAir = true;
                     vy = 0.42;
                 } else if (now < bodyY - 0.01) {
@@ -125,7 +127,8 @@ final class Hallucinations {
             if (inAir) {
                 bodyY += vy;
                 vy = (vy - 0.08) * 0.98;
-                if (bodyY < now) bodyY = now; // never sink into the step being climbed
+                // Never sink into the step being climbed or the far side of a hole (over the hole, now = GAP).
+                if (bodyY < now) bodyY = now;
                 if (vy < 0 && bodyY <= now + 0.001) {
                     bodyY = now;
                     inAir = false;
@@ -674,26 +677,60 @@ final class Hallucinations {
     /**
      * Traces the ground along the line a..b at n+1 evenly spaced points, starting at point {@code anchor} on floor
      * {@code anchorFloor} and walking outward both ways. Each point may be one block higher (a step they jump up)
-     * or one block lower (a ledge they drop off) than its neighbour; walls of 2+ blocks, the void, or no room
-     * for a body make the path invalid (null). Returns the floor (feet) height at each point.
+     * or one block lower (a ledge they drop off) than its neighbour. Holes up to 3 blocks wide are jumped over
+     * like parkour (landing at the same height; or one up/down for a 1-block gap); those points are {@link #GAP}.
+     * Walls of 2+ blocks, wider holes, the void, or no room for a body make the path invalid (null).
+     * Returns the floor (feet) height at each point.
      */
     private int[] terrain(double ax, double az, double bx, double bz, int anchor, int anchorFloor, int n) {
         int[] f = new int[n + 1];
         if (!stand(cell(ax, bx, anchor, n), anchorFloor, cell(az, bz, anchor, n))) return null;
         f[anchor] = anchorFloor;
+        double spacing = Math.sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az)) / n;
         for (int dir = -1; dir <= 1; dir += 2) {
-            for (int i = anchor + dir; i >= 0 && i <= n; i += dir) {
+            int i = anchor + dir;
+            while (i >= 0 && i <= n) {
                 int x = cell(ax, bx, i, n), z = cell(az, bz, i, n), prev = f[i - dir];
                 if (stand(x, prev, z)) f[i] = prev;
                 else if (stand(x, prev + 1, z) && !solid(cell(ax, bx, i - dir, n), prev + 2, cell(az, bz, i - dir, n))) {
                     f[i] = prev + 1; // one block up (room to jump from the lower side)
                 } else if (stand(x, prev - 1, z) && !solid(x, prev + 1, z)) {
                     f[i] = prev - 1; // one block down
-                } else return null;
+                } else {
+                    // A hole? Look for ground on the other side within a sprint-jump (3 blocks), with open air
+                    // above the hole for the jump arc.
+                    int land = -1;
+                    for (int j = i; j >= 0 && j <= n; j += dir) {
+                        double across = Math.abs(j - (i - dir)) * spacing; // from the take-off point
+                        if (across > 3.6) break;
+                        int jx = cell(ax, bx, j, n), jz = cell(az, bz, j, n);
+                        if (stand(jx, prev, jz)) {
+                            land = j;
+                            f[j] = prev;
+                        } else if (across <= 1.6 && stand(jx, prev - 1, jz) && !solid(jx, prev + 1, jz)) {
+                            land = j;
+                            f[j] = prev - 1;
+                        } else if (across <= 1.6 && stand(jx, prev + 1, jz) && !solid(jx, prev + 2, jz)) {
+                            land = j;
+                            f[j] = prev + 1;
+                        }
+                        if (land >= 0) break;
+                        boolean open = !solid(jx, prev - 1, jz) && !solid(jx, prev, jz)
+                                && !solid(jx, prev + 1, jz) && !solid(jx, prev + 2, jz);
+                        if (!open) break; // a wall or a block in the way of the jump
+                    }
+                    if (land < 0) return null;
+                    for (int j = i; j != land; j += dir) f[j] = GAP;
+                    i = land;
+                }
+                i += dir;
             }
         }
         return f;
     }
+
+    /** Floor value for a point over a hole being jumped (no ground there). */
+    static final int GAP = Integer.MIN_VALUE / 2;
 
     private static int cell(double a, double b, int i, int n) {
         return (int) Math.floor(a + (b - a) * i / n);

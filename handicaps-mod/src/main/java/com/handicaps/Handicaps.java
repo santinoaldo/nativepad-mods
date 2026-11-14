@@ -17,7 +17,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Keyboard;
 
-@Mod(modid = "handicaps", name = "Handicaps", version = "1.5.3", clientSideOnly = true,
+@Mod(modid = "handicaps", name = "Handicaps", version = "1.5.4", clientSideOnly = true,
         acceptedMinecraftVersions = "[1.8.9]", guiFactory = "com.handicaps.GuiFactory")
 public class Handicaps {
 
