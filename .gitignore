@@ -1,0 +1,12 @@
+# build output
+build/
+.gradle/
+run/
+out/
+*.log
+# finished mod jars (published on Modrinth instead); keep the Gradle wrapper jar
+/*.jar
+# IDE
+.idea/
+*.iml
+.vscode/

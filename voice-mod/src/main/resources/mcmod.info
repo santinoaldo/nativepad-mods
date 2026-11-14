@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "${modid}",
+    "name": "VoiceHotbar",
+    "description": "Say an item (\"blocks!\") to switch to it, or hold a key and talk to send a chat message or command. Offline speech recognition by Vosk (Apache 2.0).",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "https://github.com/santinoaldo/nativepad-mods",
+    "updateUrl": "",
+    "authorList": ["santinoaldo"],
+    "credits": "Speech recognition: Vosk by Alpha Cephei (Apache 2.0) and whisper.cpp by the ggml authors (MIT)",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

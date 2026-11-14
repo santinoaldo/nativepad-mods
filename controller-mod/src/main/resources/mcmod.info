@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "${modid}",
+    "name": "NativePad",
+    "description": "Native XInput controller support with analog movement, tunable aim, and a last-slot swap button.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "https://github.com/santinoaldo/nativepad-mods",
+    "updateUrl": "",
+    "authorList": ["santinoaldo"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]
