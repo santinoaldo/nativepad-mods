@@ -611,9 +611,17 @@ final class Hallucinations {
             int light = mc.theWorld.getCombinedLight(b.pos, 0); // same light as the air it sits in
             OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light % 65536, light / 65536);
             GlStateManager.pushMatrix();
-            // +1 on z: the block-model renderer turns the model 90 degrees, which shifts it one block.
-            GlStateManager.translate(b.pos.getX() - rm.viewerPosX, b.pos.getY() - rm.viewerPosY,
-                    b.pos.getZ() - rm.viewerPosZ + 1);
+            // The block-model renderer turns the model 90 degrees (it's meant for held/carried blocks).
+            if (Handicaps.config.fakeBlocksOff) {
+                // Setting "look slightly off": keep the turn (texture sideways), just shift it back into its cell.
+                GlStateManager.translate(b.pos.getX() - rm.viewerPosX, b.pos.getY() - rm.viewerPosY,
+                        b.pos.getZ() - rm.viewerPosZ + 1);
+            } else {
+                // Turn it back, so the textures face the same way as the real blocks around it.
+                GlStateManager.translate(b.pos.getX() - rm.viewerPosX, b.pos.getY() - rm.viewerPosY,
+                        b.pos.getZ() - rm.viewerPosZ);
+                GlStateManager.rotate(-90f, 0f, 1f, 0f);
+            }
             mc.getBlockRendererDispatcher().renderBlockBrightness(b.state, 1.0f);
             GlStateManager.popMatrix();
         }
@@ -669,23 +677,24 @@ final class Hallucinations {
     private final java.util.Set<BlockPos> leftOpen = new java.util.HashSet<BlockPos>();
     private long testFillUntil;
 
+    /** Holes you've already walked over: never filled again (until you leave the server or world). */
+    private final java.util.Set<BlockPos> passed = new java.util.HashSet<BlockPos>();
+
     /**
      * Finds holes in bridges within 20 blocks and fills some of them (all, for the Test button) with a
-     * drawn-only copy of the bridge's block. Fills go away when the hole does (someone places a real block)
-     * or when you move away. Returns how many holes are filled now.
+     * drawn-only copy of the bridge's block. A fill stays, even if you walk away and come back, until you pass
+     * over it (or someone places a real block there). Returns how many holes are filled now.
      */
     private int scanFills(WorldClient w, EntityPlayerSP p, boolean all) {
         int px = (int) Math.floor(p.posX), py = (int) Math.floor(p.posY), pz = (int) Math.floor(p.posZ), r = 20;
-        java.util.Set<BlockPos> holes = new java.util.HashSet<BlockPos>();
         for (int x = px - r; x <= px + r; x++) {
             for (int z = pz - r; z <= pz + r; z++) {
                 for (int y = py - 5; y <= py + 1; y++) {
-                    if (!w.isAirBlock(new BlockPos(x, y, z))) continue;
+                    BlockPos pos = new BlockPos(x, y, z);
+                    if (fills.containsKey(pos) || passed.contains(pos) || (!all && leftOpen.contains(pos))) continue;
+                    if (!w.isAirBlock(pos)) continue;
                     IBlockState fill = holeFill(w, x, y, z);
                     if (fill == null) continue;
-                    BlockPos pos = new BlockPos(x, y, z);
-                    holes.add(pos);
-                    if (fills.containsKey(pos) || (!all && leftOpen.contains(pos))) continue;
                     if (all || rnd.nextBoolean()) { // about half of the holes
                         FakeBlock fb = new FakeBlock(pos, fill, null);
                         fills.put(pos, fb);
@@ -697,22 +706,38 @@ final class Hallucinations {
                 }
             }
         }
-        // Holes that are gone (filled for real) or out of range: drop their fake block.
+        // Someone placed a real block in the hole: the fake one has nothing left to do.
         for (java.util.Iterator<java.util.Map.Entry<BlockPos, FakeBlock>> it = fills.entrySet().iterator(); it.hasNext(); ) {
             java.util.Map.Entry<BlockPos, FakeBlock> en = it.next();
-            if (!holes.contains(en.getKey())) {
+            if (!w.isAirBlock(en.getKey())) {
                 fakeBlocks.remove(en.getValue());
                 it.remove();
             }
         }
-        leftOpen.retainAll(holes);
         return fills.size();
+    }
+
+    /** Every tick: a fill you step onto (and fall through) disappears for good. */
+    private void checkPassedFills(EntityPlayerSP p) {
+        if (fills.isEmpty()) return;
+        int px = (int) Math.floor(p.posX), pz = (int) Math.floor(p.posZ);
+        for (java.util.Iterator<java.util.Map.Entry<BlockPos, FakeBlock>> it = fills.entrySet().iterator(); it.hasNext(); ) {
+            java.util.Map.Entry<BlockPos, FakeBlock> en = it.next();
+            BlockPos b = en.getKey();
+            // Standing on it (or already dropping through it).
+            if (b.getX() == px && b.getZ() == pz && p.posY < b.getY() + 1.6 && p.posY > b.getY() - 3) {
+                fakeBlocks.remove(en.getValue());
+                it.remove();
+                passed.add(b);
+            }
+        }
     }
 
     private void clearFills() {
         for (FakeBlock fb : fills.values()) fakeBlocks.remove(fb);
         fills.clear();
         leftOpen.clear();
+        passed.clear();
     }
 
     /**
@@ -761,6 +786,7 @@ final class Hallucinations {
             fakeBlocks.clear();
             fills.clear();
             leftOpen.clear();
+            passed.clear();
             nextAt = 0;
             return;
         }
@@ -784,6 +810,7 @@ final class Hallucinations {
         boolean testing = now < testFillUntil;
         if ((c.active() && c.hallucinations && c.fakeFill) || testing) {
             if (p.ticksExisted % 10 == 0) scanFills(w, p, testing);
+            checkPassedFills(p);
         } else if (!fills.isEmpty() || !leftOpen.isEmpty()) {
             clearFills();
         }

@@ -43,6 +43,7 @@ handicaps.paranoia.volume=Volume
 handicaps.cat.hallucinations=Hallucinations
 handicaps.hallucinations.enabled=Hallucinations on
 handicaps.hallucinations.every=About every (seconds)
+handicaps.hallucinations.fakeBlocksOff=Fake blocks look slightly off
 handicaps.hallucinations.fakeFireball=Fake fireball
 handicaps.hallucinations.fakePlayer=Fake player rushing you
 handicaps.paranoia.fight=A fight nearby

@@ -44,6 +44,7 @@ final class HConfig {
     float paranoiaEvery, paranoiaVolume;
     boolean hallucinations, fakeFireballs, fakePlayers, fakeInvisible, fakeArrow, fakeBed, fakeBridger, fakeFill;
     float hallucinationEvery;
+    boolean fakeBlocksOff;
     String paranoiaSet;
 
     HConfig(File file) {
@@ -157,6 +158,7 @@ final class HConfig {
 
         hallucinations = bool(HALLU, "enabled", false,
                 "Fake fireballs and players that only you can see. They can't hurt you and can't be hit.");
+        fakeBlocksOff = bool(HALLU, "fakeBlocksOff", false, "Fake blocks (bridger, bridge holes) are drawn with their texture turned sideways, so a careful look tells them apart from real ones.");
         hallucinationEvery = slider(HALLU, "every", 45f, 10f, 180f, "About how many seconds between hallucinations (randomized).");
         fakeFireballs = hallu("fakeFireball", "A fireball flies at you and 'explodes' next to you (no damage).");
         fakePlayers = hallu("fakePlayer", "A player from the tab list sprints at you with a sword, then vanishes.");
