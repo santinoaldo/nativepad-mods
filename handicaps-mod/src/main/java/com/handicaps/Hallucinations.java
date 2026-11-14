@@ -238,12 +238,37 @@ final class Hallucinations {
 
     private void spawnPlayer() {
         EntityPlayerSP p = mc.thePlayer;
-        double[] s = startPoint(14 + rnd.nextDouble() * 6, 0);
-        // Sprints at you and vanishes ~1.5 blocks away.
-        double dx = p.posX - s[0], dz = p.posZ - s[2], len = Math.sqrt(dx * dx + dz * dz);
-        double ex = p.posX - dx / len * 1.5, ez = p.posZ - dz / len * 1.5;
-        int ticks = Math.max(10, (int) ((len - 1.5) / 0.28)); // sprint speed ~5.6 blocks/s
-        add(new PlayerFake(s[0], p.posY, s[2], ex, p.posY, ez, ticks, randomProfile()));
+        double y = Math.floor(p.posY + 0.01); // stand on the same floor level as you
+        // Only run where a real player could: try random directions until one has walkable ground all the
+        // way to you. On a thin bridge over the void there may be none: then it's a fireball instead.
+        for (int attempt = 0; attempt < 24; attempt++) {
+            double[] s = startPoint(9 + rnd.nextDouble() * 9, 0);
+            double dx = p.posX - s[0], dz = p.posZ - s[2], len = Math.sqrt(dx * dx + dz * dz);
+            double ex = p.posX - dx / len * 1.5, ez = p.posZ - dz / len * 1.5;
+            if (!walkable(s[0], y, s[2], ex, ez)) continue;
+            int ticks = Math.max(10, (int) ((len - 1.5) / 0.28)); // sprint speed ~5.6 blocks/s
+            add(new PlayerFake(s[0], y, s[2], ex, y, ez, ticks, randomProfile()));
+            return;
+        }
+        spawnFireball();
+    }
+
+    /** Solid ground under every step of the path, and room for a body (feet and head clear). */
+    private boolean walkable(double sx, double y, double sz, double ex, double ez) {
+        double len = Math.sqrt((ex - sx) * (ex - sx) + (ez - sz) * (ez - sz));
+        int steps = Math.max(1, (int) (len / 0.4));
+        int by = (int) y;
+        for (int i = 0; i <= steps; i++) {
+            double t = i / (double) steps;
+            int bx = (int) Math.floor(sx + (ex - sx) * t), bz = (int) Math.floor(sz + (ez - sz) * t);
+            if (!solid(bx, by - 1, bz)) return false;           // nothing to stand on
+            if (solid(bx, by, bz) || solid(bx, by + 1, bz)) return false; // wall in the way
+        }
+        return true;
+    }
+
+    private boolean solid(int x, int y, int z) {
+        return mc.theWorld.getBlockState(new net.minecraft.util.BlockPos(x, y, z)).getBlock().getMaterial().blocksMovement();
     }
 
     /** Copies someone from the tab list (so the fake has their skin and name), or a default player. */
