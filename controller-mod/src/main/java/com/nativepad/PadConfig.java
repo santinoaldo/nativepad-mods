@@ -23,14 +23,26 @@ public final class PadConfig {
 
     static final String GENERAL = "general", AIM = "aim", MOVEMENT = "movement",
             TRIGGERS = "triggers", MENU = "menu", BUTTONS = "buttons", RUMBLE = "rumble", BATTERY = "battery",
-            OVERLAY = "overlay";
-    private static final String[] GUI_CATEGORIES = {GENERAL, AIM, MOVEMENT, TRIGGERS, MENU, RUMBLE, BATTERY, OVERLAY};
+            OVERLAY = "overlay", OVERLAY_POS = "overlayposition";
+    private static final String[] GUI_CATEGORIES = {GENERAL, AIM, MOVEMENT, TRIGGERS, MENU, RUMBLE, BATTERY};
 
     // Controller overlay
     public String overlayHud = HUD_OFF;
     public float overlayScale;
+    /** Dragged position: top-left corner as a fraction (0..1) of the free space across / down the screen. */
+    public float overlayX, overlayY;
     static final String HUD_OFF = "Off", HUD_TOP_LEFT = "Top left", HUD_TOP_RIGHT = "Top right",
-            HUD_BOTTOM_LEFT = "Bottom left", HUD_BOTTOM_RIGHT = "Bottom right";
+            HUD_BOTTOM_LEFT = "Bottom left", HUD_BOTTOM_RIGHT = "Bottom right", HUD_CUSTOM = "Custom (dragged)";
+
+    /** Save a position dragged on the Move overlay screen (switches the overlay to that custom spot). */
+    public void setOverlayPosition(float fx, float fy, float scale) {
+        cfg.get(OVERLAY_POS, "x", 1.0).set(Math.max(0, Math.min(1, fx)));
+        cfg.get(OVERLAY_POS, "y", 1.0).set(Math.max(0, Math.min(1, fy)));
+        cfg.get(OVERLAY, "position", HUD_BOTTOM_RIGHT).set(HUD_CUSTOM);
+        cfg.get(OVERLAY, "scale", 1.0).set(scale);
+        cfg.save();
+        load();
+    }
 
     // Rumble
     public boolean rumble, rumbleOnDamage, rumbleLowHealth, rumbleOnChatAlerts;
@@ -105,6 +117,15 @@ public final class PadConfig {
         list.add(new DummyConfigElement.DummyCategoryElement("bindings", "nativepad.bindings",
                 GuiFactory.BindingsEntry.class));
         for (String c : GUI_CATEGORIES) list.add(new ConfigElement(cfg.getCategory(c)));
+        // Controller overlay: a "Move overlay..." button (drag it with the mouse) above the regular settings.
+        List<IConfigElement> overlay = new ArrayList<IConfigElement>();
+        overlay.add(new DummyConfigElement.DummyCategoryElement("move", "nativepad.overlay.move",
+                GuiFactory.MoveOverlayEntry.class));
+        overlay.add(new ConfigElement(cfg.getCategory(OVERLAY).get("position")));
+        overlay.add(new ConfigElement(cfg.getCategory(OVERLAY).get("scale")));
+        DummyConfigElement.DummyCategoryElement cat =
+                new DummyConfigElement.DummyCategoryElement(OVERLAY, "nativepad.cat." + OVERLAY, overlay);
+        list.add(cat);
         return list;
     }
 
@@ -161,10 +182,13 @@ public final class PadConfig {
 
         Property ov = cfg.get(OVERLAY, "position", HUD_BOTTOM_RIGHT,
                 "Shows a small controller on screen that lights up as you press buttons and move the sticks.",
-                new String[]{HUD_OFF, HUD_TOP_LEFT, HUD_TOP_RIGHT, HUD_BOTTOM_LEFT, HUD_BOTTOM_RIGHT});
+                new String[]{HUD_OFF, HUD_TOP_LEFT, HUD_TOP_RIGHT, HUD_BOTTOM_LEFT, HUD_BOTTOM_RIGHT, HUD_CUSTOM});
+        ov.setValidValues(new String[]{HUD_OFF, HUD_TOP_LEFT, HUD_TOP_RIGHT, HUD_BOTTOM_LEFT, HUD_BOTTOM_RIGHT, HUD_CUSTOM});
         ov.setLanguageKey("nativepad." + OVERLAY + ".position");
         track(OVERLAY, "position");
         overlayHud = ov.getString();
+        overlayX = (float) cfg.get(OVERLAY_POS, "x", 1.0, "Set by dragging on the Move overlay screen.").getDouble(1.0);
+        overlayY = (float) cfg.get(OVERLAY_POS, "y", 1.0, "Set by dragging on the Move overlay screen.").getDouble(1.0);
         overlayScale = slider(OVERLAY, "scale", 1.0f, 0.5f, 2.5f, "Size of the controller overlay.");
 
         category(GENERAL, "");

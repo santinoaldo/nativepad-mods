@@ -51,6 +51,18 @@ public final class GuiFactory implements IModGuiFactory {
         }
     }
 
+    /** "Move overlay..." row: opens a screen where you drag the controller overlay with the mouse. */
+    public static final class MoveOverlayEntry extends GuiConfigEntries.CategoryEntry {
+        public MoveOverlayEntry(GuiConfig owningScreen, GuiConfigEntries owningEntryList, IConfigElement element) {
+            super(owningScreen, owningEntryList, element);
+        }
+
+        @Override
+        protected GuiScreen buildChildScreen() {
+            return new OverlayMoveScreen(this.owningScreen);
+        }
+    }
+
     /** Forge's number slider, but always showing two decimals so small values like 0.08 aren't rounded. */
     public static final class DecimalSliderEntry extends GuiConfigEntries.NumberSliderEntry {
         public DecimalSliderEntry(GuiConfig owningScreen, GuiConfigEntries owningEntryList, IConfigElement element) {

@@ -32,4 +32,5 @@ nativepad.battery.warning=Low battery warning
 nativepad.cat.overlay=Controller overlay
 nativepad.overlay.position=Show overlay
 nativepad.overlay.scale=Size
+nativepad.overlay.move=Move overlay (drag with mouse)...
 nativepad.menu.stickSnap=Left stick snaps in inventories

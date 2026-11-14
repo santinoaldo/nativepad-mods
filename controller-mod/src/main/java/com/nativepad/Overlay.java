@@ -19,7 +19,8 @@ import org.lwjgl.opengl.GL11;
 final class Overlay {
 
     /** Size of the drawing at scale 1, in GUI pixels. */
-    private static final int W = 110, H = 62;
+    static final int W = 110, H = 62;
+    static Overlay instance;
 
     private static final int IDLE = 0x55FFFFFF, RING = 0x40FFFFFF, BODY = 0x90101010, LIT = 0xFFFFFFFF;
     private static final int A_COL = 0xFF55DD55, B_COL = 0xFFEE5555, X_COL = 0xFF5599FF, Y_COL = 0xFFEEDD44;
@@ -29,6 +30,7 @@ final class Overlay {
 
     Overlay(ControllerHandler pad) {
         this.pad = pad;
+        instance = this;
     }
 
     @SubscribeEvent
@@ -38,14 +40,39 @@ final class Overlay {
         String pos = cfg.overlayHud;
         if (pos.equals(PadConfig.HUD_OFF) || pad.padIndex() < 0 || mc.gameSettings.showDebugInfo) return;
 
-        XInput.PadState s = pad.state();
-        float scale = cfg.overlayScale;
-        ScaledResolution sr = e.resolution;
-        float x = pos.endsWith("left") ? 3 : sr.getScaledWidth() - W * scale - 3;
-        float y = pos.startsWith("Top") ? 3 : sr.getScaledHeight() - H * scale - 3;
-        // Don't sit on top of the battery indicator when both use the same corner.
-        if (pos.equals(cfg.batteryHud)) y += pos.startsWith("Top") ? 12 : -12;
+        float[] at = position(e.resolution, cfg.overlayScale);
+        draw(at[0], at[1], cfg.overlayScale, pad.state());
+    }
 
+    private final XInput.PadState none = new XInput.PadState();
+
+    /** The live controller reading, or an idle one when no controller is connected. */
+    XInput.PadState liveState() {
+        return pad.padIndex() >= 0 ? pad.state() : none;
+    }
+
+    /** Where the overlay's top-left corner goes on this screen: a corner preset, or where you dragged it. */
+    static float[] position(ScaledResolution sr, float scale) {
+        PadConfig cfg = NativePad.config;
+        String pos = cfg.overlayHud;
+        float w = W * scale, h = H * scale, sw = sr.getScaledWidth(), sh = sr.getScaledHeight();
+        float x, y;
+        if (pos.equals(PadConfig.HUD_CUSTOM)) {
+            // Saved as a fraction of the free space, so it stays in the same spot at any window size.
+            x = cfg.overlayX * (sw - w);
+            y = cfg.overlayY * (sh - h);
+        } else {
+            x = pos.endsWith("left") ? 3 : sw - w - 3;
+            y = pos.startsWith("Top") ? 3 : sh - h - 3;
+            // Don't sit on top of the battery indicator when both use the same corner.
+            if (pos.equals(cfg.batteryHud)) y += pos.startsWith("Top") ? 12 : -12;
+        }
+        return new float[]{Math.max(0, Math.min(sw - w, x)), Math.max(0, Math.min(sh - h, y))};
+    }
+
+    /** Draws the controller with its top-left corner at (x, y). */
+    void draw(float x, float y, float scale, XInput.PadState s) {
+        PadConfig cfg = NativePad.config;
         GlStateManager.pushMatrix();
         GlStateManager.translate(x, y, 0);
         GlStateManager.scale(scale, scale, 1);
