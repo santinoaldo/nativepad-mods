@@ -19,12 +19,8 @@ import org.lwjgl.opengl.GL11;
 final class Overlay {
 
     /** Size of the drawing at scale 1, in GUI pixels. */
-    static final int W = 120, H = 76;
+    static final int W = 124, H = 84;
     static Overlay instance;
-
-    private static final int IDLE = 0x55FFFFFF, RING = 0x40FFFFFF, BODY = 0xFF1E1E1E, OUTLINE = 0xFF5A5A5A,
-            LIT = 0xFFFFFFFF;
-    private static final int A_COL = 0xFF55DD55, B_COL = 0xFFEE5555, X_COL = 0xFF5599FF, Y_COL = 0xFFEEDD44;
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private final ControllerHandler pad;
@@ -71,50 +67,59 @@ final class Overlay {
         return new float[]{Math.max(0, Math.min(sw - w, x)), Math.max(0, Math.min(sh - h, y))};
     }
 
+    // ---- the drawing (units: PadShape.W x PadShape.H, scaled to fit W x H) ----
+
+    private static final int BODY = 0xFF141414, EDGE = 0xFF4A4A4A, HORN = 0xFF2A2A2A, PART = 0xFF2E2E2E,
+            STICK_BASE = 0xFF262626, STICK_CAP = 0xFF3C3C3C, FACE = 0xFF0C0C0C, LIT = 0xFFEEEEEE;
+    private static final int A_COL = 0xFF5BC236, B_COL = 0xFFE0453A, X_COL = 0xFF3A86E0, Y_COL = 0xFFF2C230;
+
     /** Draws the controller with its top-left corner at (x, y). */
     void draw(float x, float y, float scale, XInput.PadState s) {
-        PadConfig cfg = NativePad.config;
+        float t = NativePad.config.triggerThreshold;
         GlStateManager.pushMatrix();
         GlStateManager.translate(x, y, 0);
-        GlStateManager.scale(scale, scale, 1);
+        GlStateManager.scale(scale * W / (PadShape.W + 4), scale * H / (PadShape.H + 2), 1);
+        GlStateManager.translate(2, 1, 0);
         GlStateManager.disableCull();
-        float t = cfg.triggerThreshold;
 
-        // Triggers on top (fill shows how far they're pulled), then the bumpers peeking out above the body.
-        trigger(15, s.lt, s.lt > t);
-        trigger(79, s.rt, s.rt > t);
-        Gui.drawRect(13, 9, 43, 15, down(s, XInput.Button.LB) ? LIT : 0xFF6A6A6A);
-        Gui.drawRect(77, 9, 107, 15, down(s, XInput.Button.RB) ? LIT : 0xFF6A6A6A);
+        // Triggers stick up behind the top; they fill from the top down as you pull them.
+        trigger(19, s.lt, s.lt > t);
+        trigger(84, s.rt, s.rt > t);
 
-        // The controller itself: an Xbox-style silhouette with two grips. Solid, so the overlapping pieces
-        // blend into one shape; a lighter outline first, then the body on top.
-        silhouette(1, OUTLINE);
-        silhouette(0, BODY);
+        // The body: one solid shape with a slightly larger lighter copy behind it as the edge.
+        shape(1.025f, 1.035f, EDGE);
+        shape(1f, 1f, BODY);
 
-        // Sticks: ring, plus a dot where the stick is (lit when clicked in). Left stick up top, right one low.
-        stick(32, 30, s.lx, s.ly, down(s, XInput.Button.L3));
-        stick(76, 42, s.rx, s.ry, down(s, XInput.Button.R3));
+        // Bumpers along the top edge.
+        roundRect(23, 10.5f, 45, 13.5f, 1.5f, down(s, XInput.Button.LB) ? LIT : 0xFF333333);
+        roundRect(75, 10.5f, 97, 13.5f, 1.5f, down(s, XInput.Button.RB) ? LIT : 0xFF333333);
 
-        // D-pad, low on the left.
-        int dx = 44, dy = 42;
-        Gui.drawRect(dx - 2, dy - 2, dx + 2, dy + 2, IDLE);
-        Gui.drawRect(dx - 2, dy - 7, dx + 2, dy - 2, down(s, XInput.Button.DPAD_UP) ? LIT : IDLE);
-        Gui.drawRect(dx - 2, dy + 2, dx + 2, dy + 7, down(s, XInput.Button.DPAD_DOWN) ? LIT : IDLE);
-        Gui.drawRect(dx - 7, dy - 2, dx - 2, dy + 2, down(s, XInput.Button.DPAD_LEFT) ? LIT : IDLE);
-        Gui.drawRect(dx + 2, dy - 2, dx + 7, dy + 2, down(s, XInput.Button.DPAD_RIGHT) ? LIT : IDLE);
+        // Sticks: a base, and a cap that moves with the stick (yellow when clicked in).
+        stick(36, 27, s.lx, s.ly, down(s, XInput.Button.L3));
+        stick(75, 41, s.rx, s.ry, down(s, XInput.Button.R3));
 
-        // Back / Start in the middle.
-        Gui.drawRect(51, 27, 56, 30, down(s, XInput.Button.BACK) ? LIT : IDLE);
-        Gui.drawRect(64, 27, 69, 30, down(s, XInput.Button.START) ? LIT : IDLE);
+        // D-pad: a plus; the pressed arm lights up.
+        float dx = 45, dy = 41;
+        roundRect(dx - 2.5f, dy - 7, dx + 2.5f, dy + 7, 1, PART);
+        roundRect(dx - 7, dy - 2.5f, dx + 7, dy + 2.5f, 1, PART);
+        if (down(s, XInput.Button.DPAD_UP)) roundRect(dx - 2.5f, dy - 7, dx + 2.5f, dy - 2.5f, 1, LIT);
+        if (down(s, XInput.Button.DPAD_DOWN)) roundRect(dx - 2.5f, dy + 2.5f, dx + 2.5f, dy + 7, 1, LIT);
+        if (down(s, XInput.Button.DPAD_LEFT)) roundRect(dx - 7, dy - 2.5f, dx - 2.5f, dy + 2.5f, 1, LIT);
+        if (down(s, XInput.Button.DPAD_RIGHT)) roundRect(dx + 2.5f, dy - 2.5f, dx + 7, dy + 2.5f, 1, LIT);
 
-        // Face buttons in their usual colors (dim until pressed).
-        int fx = 88, fy = 30;
-        face(fx, fy + 7, A_COL, down(s, XInput.Button.A), "A");
-        face(fx + 7, fy, B_COL, down(s, XInput.Button.B), "B");
-        face(fx - 7, fy, X_COL, down(s, XInput.Button.X), "X");
-        face(fx, fy - 7, Y_COL, down(s, XInput.Button.Y), "Y");
+        // Back / Start.
+        circle(53, 27, 2.3, down(s, XInput.Button.BACK) ? LIT : 0xFF333333);
+        circle(67, 27, 2.3, down(s, XInput.Button.START) ? LIT : 0xFF333333);
+
+        // Face buttons: colored letters on dark buttons; the whole button fills with its color when pressed.
+        float fx = 87, fy = 27, sp = 6.5f;
+        face(fx, fy + sp, A_COL, down(s, XInput.Button.A), "A");
+        face(fx + sp, fy, B_COL, down(s, XInput.Button.B), "B");
+        face(fx - sp, fy, X_COL, down(s, XInput.Button.X), "X");
+        face(fx, fy - sp, Y_COL, down(s, XInput.Button.Y), "Y");
 
         GlStateManager.enableCull();
+        GlStateManager.enableTexture2D();
         GlStateManager.color(1f, 1f, 1f, 1f);
         GlStateManager.popMatrix();
     }
@@ -123,53 +128,61 @@ final class Overlay {
         return (s.buttons & b.mask) != 0;
     }
 
-    private void trigger(int left, float value, boolean pressed) {
-        Gui.drawRect(left, 0, left + 26, 6, 0xFF4A4A4A);
-        int fill = Math.round(26 * Math.max(0f, Math.min(1f, value)));
-        if (fill > 0) Gui.drawRect(left, 0, left + fill, 6, pressed ? LIT : 0xFFBBBBBB);
+    private void trigger(float left, float value, boolean pressed) {
+        roundRect(left, 0, left + 17, 18, 4, HORN);
+        float fill = 18 * Math.max(0f, Math.min(1f, value));
+        if (fill > 0.5f) roundRect(left, 0, left + 17, Math.max(fill, 8), 4, pressed ? LIT : 0xFF8A8A8A);
     }
 
-    /** The pad's outline: a rounded top body plus a grip on each side, grown by {@code e} pixels. */
-    private void silhouette(int e, int color) {
-        // Rounded top body.
-        int r = 10 + e;
-        Gui.drawRect(14 - e + 10, 14 - e, 106 + e - 10, 50 + e, color);
-        Gui.drawRect(14 - e, 14 - e + 10, 106 + e, 50 + e - 10, color);
-        circle(24, 24, r, color);
-        circle(96, 24, r, color);
-        circle(24, 40, r, color);
-        circle(96, 40, r, color);
-        // Grips: a wide upper part and a narrower lower tip, angled outward like a real controller.
-        circle(28, 48, 16 + e, color);
-        circle(25, 55, 14 + e, color); // smooths the grip between the two parts
-        circle(22, 61, 12 + e, color);
-        circle(92, 48, 16 + e, color);
-        circle(95, 55, 14 + e, color);
-        circle(98, 61, 12 + e, color);
+    private void stick(float cx, float cy, float sx, float sy, boolean clicked) {
+        circle(cx, cy, 8.5, STICK_BASE);
+        circle(cx + sx * 2.5, cy - sy * 2.5, 6, clicked ? 0xFFF2C230 : STICK_CAP);
     }
 
-    private void stick(int cx, int cy, float sx, float sy, boolean clicked) {
-        circle(cx, cy, 8, RING);
-        circle(cx + sx * 4, cy - sy * 4, 4, clicked ? 0xFFFFDD55 : 0xFFDDDDDD);
-    }
-
-    private void face(int cx, int cy, int color, boolean pressed, String label) {
-        circle(cx, cy, 3.5, pressed ? color : (color & 0x00FFFFFF) | 0x55000000);
+    private void face(float cx, float cy, int color, boolean pressed, String label) {
+        circle(cx, cy, 3.6, pressed ? color : FACE);
         GlStateManager.pushMatrix();
         GlStateManager.translate(cx, cy, 0);
-        GlStateManager.scale(0.5f, 0.5f, 1);
+        GlStateManager.scale(0.55f, 0.55f, 1);
         int w = mc.fontRendererObj.getStringWidth(label);
-        mc.fontRendererObj.drawString(label, -w / 2 + 1, -3, pressed ? 0xFF000000 : 0xFFFFFFFF);
+        mc.fontRendererObj.drawString(label, -w / 2 + 1, -3, pressed ? 0xFF000000 : color);
         GlStateManager.popMatrix();
+    }
+
+    /** The pad outline filled solid, scaled about its middle (scale > 1 makes the edge ring). */
+    private static void shape(float sx, float sy, int argb) {
+        begin(argb);
+        Tessellator tes = Tessellator.getInstance();
+        WorldRenderer w = tes.getWorldRenderer();
+        w.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION);
+        float[] p = PadShape.OUTLINE;
+        for (int i : PadShape.TRIANGLES) {
+            w.pos(60 + (p[i * 2] - 60) * sx, 42 + (p[i * 2 + 1] - 42) * sy, 0).endVertex();
+        }
+        tes.draw();
+        end();
+    }
+
+    private static void roundRect(float l, float t, float r, float b, float rad, int argb) {
+        rad = Math.min(rad, Math.min((r - l) / 2, (b - t) / 2));
+        begin(argb);
+        Tessellator tes = Tessellator.getInstance();
+        WorldRenderer w = tes.getWorldRenderer();
+        w.begin(GL11.GL_POLYGON, DefaultVertexFormats.POSITION); // convex: one polygon, no overlaps
+        float[][] corners = {{r - rad, t + rad, -90}, {r - rad, b - rad, 0}, {l + rad, b - rad, 90}, {l + rad, t + rad, 180}};
+        for (float[] c : corners) {
+            for (int i = 0; i <= 4; i++) {
+                double ang = Math.toRadians(c[2] + i * 22.5);
+                w.pos(c[0] + Math.cos(ang) * rad, c[1] + Math.sin(ang) * rad, 0).endVertex();
+            }
+        }
+        tes.draw();
+        end();
     }
 
     /** A filled circle. */
     private static void circle(double cx, double cy, double r, int argb) {
-        float a = (argb >>> 24) / 255f, red = (argb >> 16 & 255) / 255f, g = (argb >> 8 & 255) / 255f, b = (argb & 255) / 255f;
-        GlStateManager.enableBlend();
-        GlStateManager.disableTexture2D();
-        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
-        GlStateManager.color(red, g, b, a);
+        begin(argb);
         Tessellator t = Tessellator.getInstance();
         WorldRenderer w = t.getWorldRenderer();
         w.begin(GL11.GL_TRIANGLE_FAN, DefaultVertexFormats.POSITION);
@@ -180,6 +193,17 @@ final class Overlay {
             w.pos(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r, 0).endVertex();
         }
         t.draw();
+        end();
+    }
+
+    private static void begin(int argb) {
+        GlStateManager.enableBlend();
+        GlStateManager.disableTexture2D();
+        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
+        GlStateManager.color((argb >> 16 & 255) / 255f, (argb >> 8 & 255) / 255f, (argb & 255) / 255f, (argb >>> 24) / 255f);
+    }
+
+    private static void end() {
         GlStateManager.enableTexture2D();
         GlStateManager.disableBlend();
     }
