@@ -165,7 +165,7 @@ final class HConfig {
         fakeInvisible = hallu("fakeInvisible", "An invisible player: footprints and footsteps walk up to you, but nobody is there.");
         fakeArrow = hallu("fakeArrow", "An arrow is shot from far away and whizzes past your head.");
         fakeBed = hallu("fakeBed", "The BED DESTROYED! alert (title, sound, chat line), but your bed is fine.");
-        fakeBridger = hallu("fakeBridger", "A player from the tab list speed-bridges toward you with their team's wool. The blocks are only drawn on your screen, never added to the world.");
+        fakeBridger = hallu("fakeBridger", "An enemy bridges toward you from somewhere you can't see (drops down or nerd-poles up if needed), then chases you and swings. Their blocks are only drawn on your screen, never added to the world.");
         fakeFill = hallu("fakeFill", "Some holes in nearby bridges (1-2 blocks, in a straight line) look filled in with the bridge's block, but nothing is there: walk on it and you fall. Only drawn on your screen.");
 
         category(GENERAL, "General", "");

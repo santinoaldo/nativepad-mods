@@ -11,6 +11,10 @@ import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.WorldRenderer;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import org.lwjgl.opengl.GL11;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.init.Blocks;
@@ -85,6 +89,9 @@ final class Hallucinations {
         }
 
         abstract void place(double t);
+
+        /** Set by a fake that decides for itself when it's over (the bridger after its chase). */
+        boolean done;
 
         void finish() {
         }
@@ -417,19 +424,31 @@ final class Hallucinations {
     private final List<FakeBlock> fakeBlocks = new ArrayList<FakeBlock>();
 
     private final class BridgerFake extends Fake {
-        private final int[] cx, cz;          // cells from the start to where they stop, in order
+        private final int[] cx, cz;          // cells from the start to where the bridge ends, in order
         private final boolean[] needsBlock;  // air under that cell: a fake block goes there first
         private final int[] segStart;        // tick at which they start moving onto each cell
-        private final int y, wool;
+        private final int y, wool;           // y = the level they bridge at
         private final float faceYaw;
         private int reached;                 // last cell whose block has been placed / step started
         /** Speed bridging (stand up, only crouch for a moment at each edge) instead of holding crouch. */
         private final boolean speed;
+        /** After the bridge: 0 = chase from there, 1 = drop down to your level, 2 = nerd-pole up to it. */
+        private final int endMode;
+        private final int targetY, stepX, stepZ; // your floor level, and the grid step toward you
+        private final String name;
+
+        private static final int BRIDGE = 0, DROP = 1, POLE = 2, CHASE = 3;
+        private int phase = BRIDGE, phaseAge;
+        private double bx, by, bz, vy;     // body position after bridging (free movement)
+        private boolean inAir;
+        private int floor;                  // current floor level while dropping / poling / chasing
+        private int hits, maxHits, nextSwing;
 
         BridgerFake(int[] cx, int[] cz, boolean[] needsBlock, int[] segStart, int y, float faceYaw,
-                    GameProfile profile, int wool, List<BlockPos> trail, boolean speed) {
+                    GameProfile profile, int wool, List<BlockPos> trail, boolean speed,
+                    int endMode, int targetY, int stepX, int stepZ) {
             super(cx[0] + 0.5, y, cz[0] + 0.5, cx[cx.length - 1] + 0.5, y, cz[cz.length - 1] + 0.5,
-                    segStart[cx.length - 1] + 12); // plus a short pause at the end before vanishing
+                    100000); // ends itself (done) after the chase
             this.cx = cx;
             this.cz = cz;
             this.needsBlock = needsBlock;
@@ -438,10 +457,19 @@ final class Hallucinations {
             this.wool = wool;
             this.faceYaw = faceYaw;
             this.speed = speed;
+            this.endMode = endMode;
+            this.targetY = targetY;
+            this.stepX = stepX;
+            this.stepZ = stepZ;
+            this.name = profile.getName();
+            this.maxHits = 2 + rnd.nextInt(3);
             for (BlockPos b : trail) fakeBlocks.add(new FakeBlock(b, Blocks.wool.getStateFromMeta(wool), this));
             FakePlayer p = new FakePlayer(mc.theWorld, profile);
             p.inventory.setInventorySlotContents(0, new ItemStack(Blocks.wool, 64, wool));
-            dress(p, profile.getName());
+            ItemStack sword = seenSword(name);
+            p.inventory.setInventorySlotContents(1, sword != null ? sword
+                    : new ItemStack(rnd.nextBoolean() ? Items.iron_sword : Items.stone_sword));
+            dress(p, name);
             p.inventory.currentItem = 0;
             p.setSneaking(true); // crouched at the edge, like a real bridger
             p.setPositionAndRotation(sx, sy, sz, faceYaw, 75);
@@ -452,18 +480,20 @@ final class Hallucinations {
         @Override
         void place(double t) {
             FakePlayer p = (FakePlayer) entity;
+            phaseAge++;
+            if (phase == BRIDGE) bridge(p);
+            else if (phase == DROP) drop(p);
+            else if (phase == POLE) pole(p);
+            else chase(p);
+        }
+
+        private void bridge(FakePlayer p) {
             int last = cx.length - 1;
             // They move from cell i-1 onto cell i between segStart[i-1] and segStart[i]; the block goes down first.
             while (reached < last && age >= segStart[reached]) {
                 reached++;
-                if (needsBlock[reached]) {
-                    BlockPos pos = new BlockPos(cx[reached], y - 1, cz[reached]);
-                    fakeBlocks.add(new FakeBlock(pos, Blocks.wool.getStateFromMeta(wool), this));
-                    sound("dig.cloth", 1.0f, 0.8f, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
-                    p.swingItem();
-                }
+                if (needsBlock[reached]) placeBlock(p, new BlockPos(cx[reached], y - 1, cz[reached]));
             }
-            // Position: back from cell i-1 to cell i during [segStart[i-1], segStart[i]].
             double x = cx[last] + 0.5, z = cz[last] + 0.5;
             for (int i = 1; i <= last; i++) {
                 if (age < segStart[i]) {
@@ -476,11 +506,154 @@ final class Hallucinations {
             // Crouching: slow bridgers hold it the whole way across; speed bridgers only tap it for ~2 ticks at
             // each edge as the block goes down; on real ground both stand up and walk.
             int cur = Math.max(1, reached);
-            boolean sneak = needsBlock[cur] && (!speed || age - segStart[cur - 1] < 2);
-            if (age >= segStart[last]) sneak = !speed; // stopped at the end
-            p.setSneaking(sneak);
+            p.setSneaking(needsBlock[cur] && (!speed || age - segStart[cur - 1] < 2));
             p.setPositionAndRotation2(x, y, z, faceYaw, 75, 3, false);
             p.rotationYawHead = faceYaw;
+            if (age >= segStart[last] + 4) { // bridge done: on to the next part
+                bx = x;
+                by = y;
+                bz = z;
+                floor = y;
+                phaseAge = 0;
+                p.setSneaking(false);
+                phase = endMode == 1 ? DROP : endMode == 2 ? POLE : CHASE;
+                if (phase == CHASE) p.inventory.currentItem = 1; // out comes the sword
+            }
+        }
+
+        /** Walk off the end of their (higher) bridge toward you and fall to your level. */
+        private void drop(FakePlayer p) {
+            double tx = cx[cx.length - 1] + stepX + 0.5, tz = cz[cz.length - 1] + stepZ + 0.5;
+            double dx = tx - bx, dz = tz - bz, d = Math.sqrt(dx * dx + dz * dz);
+            if (d > 0.05) {
+                double s = Math.min(0.22, d);
+                bx += dx / d * s;
+                bz += dz / d * s;
+            }
+            boolean pastEdge = Math.abs(bx - (cx[cx.length - 1] + 0.5)) + Math.abs(bz - (cz[cz.length - 1] + 0.5)) > 0.8;
+            if (pastEdge && !inAir && floor > targetY) {
+                inAir = true;
+                vy = 0;
+                floor = targetY;
+            }
+            physics();
+            float yaw = yawToward(tx, tz);
+            p.setPositionAndRotation2(bx, by, bz, yaw, 20, 3, false);
+            p.rotationYawHead = yaw;
+            if (landedNow) {
+                sound("damage.fallsmall", 0.6f, 1.0f, bx, by, bz);
+                toChase(p);
+            }
+        }
+
+        /** Nerd pole: jump and place a block under their feet, again and again, up to your level. */
+        private void pole(FakePlayer p) {
+            if (floor < targetY) {
+                if (!inAir && phaseAge > 2) { // jump
+                    inAir = true;
+                    vy = 0.42;
+                    phaseAge = 0;
+                }
+                // At the top of the jump (feet a block up), the block goes down under them.
+                if (inAir && by >= floor + 1.0 && vy < 0.3 && floor < targetY) {
+                    placeBlock(p, new BlockPos((int) Math.floor(bx), floor, (int) Math.floor(bz)));
+                    floor++;
+                }
+                physics();
+                p.setPositionAndRotation2(bx, by, bz, faceYaw, 90, 3, false); // looking straight down
+                p.rotationYawHead = faceYaw;
+            } else {
+                // On top: step across onto your level, then chase.
+                physics();
+                double tx = Math.floor(bx) + stepX + 0.5, tz = Math.floor(bz) + stepZ + 0.5;
+                if (!inAir) {
+                    p.inventory.currentItem = 1;
+                    toChase(p);
+                }
+                float yaw = yawToward(tx, tz);
+                p.setPositionAndRotation2(bx, by, bz, yaw, 10, 3, false);
+                p.rotationYawHead = yaw;
+            }
+        }
+
+        private void toChase(FakePlayer p) {
+            phase = CHASE;
+            phaseAge = 0;
+            p.inventory.currentItem = 1;
+            p.setSprinting(true);
+        }
+
+        /** Sprint at you over real ground (and their own fake blocks), and swing once in reach. */
+        private void chase(FakePlayer p) {
+            EntityPlayerSP me = mc.thePlayer;
+            double dx = me.posX - bx, dz = me.posZ - bz, d = Math.sqrt(dx * dx + dz * dz);
+            if (d > 1.5) {
+                double s = Math.min(0.28, d - 1.4); // sprint speed
+                double nx = bx + dx / d * s, nz = bz + dz / d * s;
+                int nf = groundAt(nx, nz, floor);
+                if (nf == Integer.MIN_VALUE) {
+                    done = true; // a gap they'd have to bridge again: they give up and vanish
+                    return;
+                }
+                bx = nx;
+                bz = nz;
+                if (nf > floor && !inAir) { // step up: jump
+                    inAir = true;
+                    vy = 0.42;
+                } else if (nf < floor && !inAir) { // ledge: fall
+                    inAir = true;
+                    vy = 0;
+                }
+                floor = nf;
+                if (!inAir && phaseAge % 5 == 0) {
+                    sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.25f, 1.0f, bx, by, bz);
+                }
+            }
+            physics();
+            float yaw = yawToward(me.posX, me.posZ);
+            double eyeDy = (me.posY + me.getEyeHeight()) - (by + 1.62);
+            float pitch = (float) -Math.toDegrees(Math.atan2(eyeDy, Math.max(0.5, d)));
+            p.setPositionAndRotation2(bx, by, bz, yaw, pitch, 3, false);
+            p.rotationYawHead = yaw;
+            // In reach: swing at the 1.8 hit pace; a swing that lands plays the hit sound on you (no damage).
+            if (d < 3.2 && age >= nextSwing) {
+                p.swingItem();
+                nextSwing = age + 8 + rnd.nextInt(5);
+                if (d < 3.0 && Math.abs(me.posY - by) < 2) {
+                    sound("game.player.hurt", 0.8f, 0.9f + rnd.nextFloat() * 0.2f, me.posX, me.posY, me.posZ);
+                    hits++;
+                }
+            }
+            if (hits >= maxHits || phaseAge > 160) done = true;
+        }
+
+        private boolean landedNow;
+
+        /** Vertical movement with vanilla jump/gravity, landing on {@link #floor}. */
+        private void physics() {
+            landedNow = false;
+            if (!inAir) {
+                by = floor;
+                return;
+            }
+            by += vy;
+            vy = (vy - 0.08) * 0.98;
+            if (vy < 0 && by <= floor) {
+                by = floor;
+                inAir = false;
+                landedNow = true;
+            }
+        }
+
+        private float yawToward(double tx, double tz) {
+            return (float) Math.toDegrees(Math.atan2(-(tx - bx), tz - bz));
+        }
+
+        private void placeBlock(FakePlayer p, BlockPos pos) {
+            p.inventory.currentItem = 0;
+            fakeBlocks.add(new FakeBlock(pos, Blocks.wool.getStateFromMeta(wool), this));
+            sound("dig.cloth", 1.0f, 0.8f, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+            p.swingItem();
         }
 
         @Override
@@ -492,60 +665,112 @@ final class Hallucinations {
     }
 
     /**
-     * Picks a line that crosses in front of you: they start just off-screen to your left or right, a few blocks
-     * ahead, and bridge sideways across your view (backwards, crouched, like a real bridger), finishing near the
-     * edge of your view on the other side. If they start over the void, a short bit of the bridge they've already
-     * built trails behind them (off-screen). Returns false (and shows nothing) if there's no gap to bridge across.
+     * The floor someone at (x, z) would stand on, starting from {@code cur}: the same level, one up (a jump),
+     * or up to three down (a drop). Real blocks and fake blocks both count as ground. MIN_VALUE = nowhere.
+     */
+    private int groundAt(double x, double z, int cur) {
+        int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
+        int[] tries = {cur, cur + 1, cur - 1, cur - 2, cur - 3};
+        for (int f : tries) {
+            if (solid(bx, f, bz) || solid(bx, f + 1, bz)) continue;
+            if (solid(bx, f - 1, bz) || fakeBlockAt(bx, f - 1, bz)) return f;
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    private boolean fakeBlockAt(int x, int y, int z) {
+        for (FakeBlock b : fakeBlocks) {
+            if (b.pos.getX() == x && b.pos.getY() == y && b.pos.getZ() == z) return true;
+        }
+        return false;
+    }
+
+    /** True if a point is somewhere you can't see right now: off-screen, or hidden behind blocks. */
+    private boolean outOfSight(double x, double y, double z) {
+        EntityPlayerSP p = mc.thePlayer;
+        net.minecraft.util.Vec3 eye = new net.minecraft.util.Vec3(p.posX, p.posY + p.getEyeHeight(), p.posZ);
+        net.minecraft.util.Vec3 to = new net.minecraft.util.Vec3(x, y, z);
+        net.minecraft.util.Vec3 look = p.getLook(1f);
+        net.minecraft.util.Vec3 dir = to.subtract(eye).normalize();
+        if (dir.dotProduct(look) < 0.30) return true; // more than ~72 degrees from where you look: off-screen
+        return mc.theWorld.rayTraceBlocks(eye, to) != null; // something solid in the way
+    }
+
+    /**
+     * Picks where a bridger comes from: somewhere you can't see (behind you, to the side, or hidden), at your
+     * level or a few blocks above or below. They bridge straight toward you; then, from above they drop down,
+     * from below they nerd-pole up, and once they can reach you they chase you and swing. Returns false if
+     * there's no gap to bridge across from anywhere out of sight.
      */
     private boolean spawnBridger() {
         EntityPlayerSP p = mc.thePlayer;
-        int y = (int) Math.floor(p.posY + 0.01);
+        int py = (int) Math.floor(p.posY + 0.01);
         int px = (int) Math.floor(p.posX), pz = (int) Math.floor(p.posZ);
-        double look = Math.toRadians(p.rotationYaw);
-        double lx = -Math.sin(look), lz = Math.cos(look);
-        // Forward = the grid direction closest to where you look; they travel along the perpendicular.
-        int fx, fz;
-        if (Math.abs(lx) > Math.abs(lz)) {
-            fx = lx > 0 ? 1 : -1;
-            fz = 0;
-        } else {
-            fx = 0;
-            fz = lz > 0 ? 1 : -1;
+        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        // Level offsets: mostly your level, sometimes above (they drop down), sometimes below (they nerd-pole).
+        List<Integer> levels = new ArrayList<Integer>();
+        levels.add(0);
+        levels.add(2 + rnd.nextInt(3));
+        levels.add(-(2 + rnd.nextInt(3)));
+        java.util.Collections.shuffle(levels, rnd);
+        if (rnd.nextFloat() < 0.5f) { // half the time, prefer your own level
+            levels.remove(Integer.valueOf(0));
+            levels.add(0, 0);
         }
-        int firstSign = rnd.nextBoolean() ? 1 : -1;
-        int[] aheads = {4, 5, 3, 6, 7};
-        for (int ahead : aheads) {
-            for (int s = 0; s < 2; s++) {
-                int sign = s == 0 ? firstSign : -firstSign;
-                int mx = -fz * sign, mz = fx * sign; // direction of travel (sideways across your view)
-                // Start off-screen (more than ~60 degrees to the side), end just past the middle on the other side.
-                int from = -(ahead * 2 + 1), to = ahead + 1 + rnd.nextInt(2);
-                int n = to - from + 1;
+        for (int dy : levels) {
+            for (int attempt = 0; attempt < 30; attempt++) {
+                int[] d = dirs[rnd.nextInt(4)];             // they come from this side of you
+                int lat = rnd.nextInt(3) - 1;                // or a block to either side of that line
+                int dist = 8 + rnd.nextInt(7);               // starting 8-14 blocks away
+                int L = py + dy;                             // the level they bridge at
+                int stop = 2;                                // bridge ends 2 blocks from you
+                int n = dist - stop + 1;
                 int[] cx = new int[n], cz = new int[n];
                 boolean[] need = new boolean[n];
                 int blocks = 0;
                 boolean ok = true;
                 for (int i = 0; i < n && ok; i++) {
-                    int lat = from + i;
-                    cx[i] = px + fx * ahead + mx * lat;
-                    cz[i] = pz + fz * ahead + mz * lat;
-                    if (solid(cx[i], y, cz[i]) || solid(cx[i], y + 1, cz[i])) ok = false; // body must fit
-                    else if (solid(cx[i], y - 1, cz[i])) need[i] = false;               // real ground: walk
-                    else if (mc.theWorld.isAirBlock(new BlockPos(cx[i], y - 1, cz[i]))) {
+                    int along = dist - i;
+                    cx[i] = px + d[0] * along - d[1] * lat;
+                    cz[i] = pz + d[1] * along + d[0] * lat;
+                    if (solid(cx[i], L, cz[i]) || solid(cx[i], L + 1, cz[i])) ok = false; // body must fit
+                    else if (solid(cx[i], L - 1, cz[i])) need[i] = false;               // real ground: walk
+                    else if (mc.theWorld.isAirBlock(new BlockPos(cx[i], L - 1, cz[i]))) {
                         need[i] = true;
                         blocks++;
                     } else ok = false; // water, lava, plants: not a clean gap to bridge
                 }
                 if (!ok || blocks < 3) continue; // must actually bridge across a gap
+                if (!outOfSight(cx[0] + 0.5, L + 1.6, cz[0] + 0.5) || !outOfSight(cx[0] + 0.5, L + 0.5, cz[0] + 0.5)) {
+                    continue; // they'd pop into existence where you can see them
+                }
+                int sx = -d[0], sz = -d[1]; // grid step toward you
+                int ex = cx[n - 1], ez = cz[n - 1];
+                int endMode = 0;
+                if (dy > 0) {
+                    // Drop: the next cell toward you is open all the way down to your level, with ground there.
+                    int fx = ex + sx, fz = ez + sz;
+                    boolean clear = true;
+                    for (int yy = py; yy <= L + 1 && clear; yy++) if (solid(fx, yy, fz)) clear = false;
+                    if (!clear || !solid(fx, py - 1, fz)) continue;
+                    endMode = 1;
+                } else if (dy < 0) {
+                    // Nerd pole: room to pillar straight up at the end, and ground to step onto at your level.
+                    boolean clear = true;
+                    for (int yy = L; yy <= py + 2 && clear; yy++) if (solid(ex, yy, ez)) clear = false;
+                    int fx = ex + sx, fz = ez + sz;
+                    if (!clear || !solid(fx, py - 1, fz) || solid(fx, py, fz) || solid(fx, py + 1, fz)) continue;
+                    endMode = 2;
+                }
                 // Already partway across: a short trail of their bridge behind them, out of view.
                 List<BlockPos> trail = new ArrayList<BlockPos>();
                 if (need[0]) {
-                    trail.add(new BlockPos(cx[0], y - 1, cz[0]));
+                    trail.add(new BlockPos(cx[0], L - 1, cz[0]));
                     int len = 3 + rnd.nextInt(5);
                     for (int k = 1; k <= len; k++) {
-                        int tx = cx[0] - mx * k, tz = cz[0] - mz * k;
-                        BlockPos below = new BlockPos(tx, y - 1, tz);
-                        if (solid(tx, y, tz) || solid(tx, y + 1, tz) || !mc.theWorld.isAirBlock(below)) break;
+                        int tx = cx[0] + d[0] * k, tz = cz[0] + d[1] * k;
+                        BlockPos below = new BlockPos(tx, L - 1, tz);
+                        if (solid(tx, L, tz) || solid(tx, L + 1, tz) || !mc.theWorld.isAirBlock(below)) break;
                         trail.add(below);
                     }
                 }
@@ -558,9 +783,10 @@ final class Hallucinations {
                     int perBlock = speed ? 7 + rnd.nextInt(2) : 15 + rnd.nextInt(3);
                     segStart[i] = segStart[i - 1] + (need[i] ? perBlock : 5);
                 }
-                float yaw = (float) Math.toDegrees(Math.atan2(mx, -mz)); // facing back along their bridge
+                float yaw = (float) Math.toDegrees(Math.atan2(-d[0], d[1])); // facing back along their bridge
                 GameProfile profile = randomProfile();
-                add(new BridgerFake(cx, cz, need, segStart, y, yaw, profile, teamWool(profile.getName()), trail, speed));
+                add(new BridgerFake(cx, cz, need, segStart, L, yaw, profile, teamWool(profile.getName()), trail,
+                        speed, endMode, py, sx, sz));
                 return true;
             }
         }
@@ -605,28 +831,31 @@ final class Hallucinations {
         GlStateManager.enableCull();
         GlStateManager.color(1f, 1f, 1f, 1f);
         mc.getTextureManager().bindTexture(TextureMap.locationBlocksTexture);
-        RenderHelper.enableStandardItemLighting(); // shaded faces, like real blocks
+        // Drawn exactly like the world draws its own blocks (same face shading, smooth lighting and light
+        // levels from the blocks around it), so they look identical to real ones.
+        RenderHelper.disableStandardItemLighting();
+        GlStateManager.disableLighting();
+        GlStateManager.shadeModel(GL11.GL_SMOOTH);
         mc.entityRenderer.enableLightmap();
+        boolean off = Handicaps.config.fakeBlocksOff;
+        Tessellator tes = Tessellator.getInstance();
+        WorldRenderer wr = tes.getWorldRenderer();
         for (FakeBlock b : fakeBlocks) {
-            int light = mc.theWorld.getCombinedLight(b.pos, 0); // same light as the air it sits in
-            OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light % 65536, light / 65536);
             GlStateManager.pushMatrix();
-            // The block-model renderer turns the model 90 degrees (it's meant for held/carried blocks).
-            if (Handicaps.config.fakeBlocksOff) {
-                // Setting "look slightly off": keep the turn (texture sideways), just shift it back into its cell.
-                GlStateManager.translate(b.pos.getX() - rm.viewerPosX, b.pos.getY() - rm.viewerPosY,
-                        b.pos.getZ() - rm.viewerPosZ + 1);
-            } else {
-                // Turn it back, so the textures face the same way as the real blocks around it.
-                GlStateManager.translate(b.pos.getX() - rm.viewerPosX, b.pos.getY() - rm.viewerPosY,
-                        b.pos.getZ() - rm.viewerPosZ);
-                GlStateManager.rotate(-90f, 0f, 1f, 0f);
-            }
-            mc.getBlockRendererDispatcher().renderBlockBrightness(b.state, 1.0f);
+            GlStateManager.translate(b.pos.getX() - rm.viewerPosX + 0.5, b.pos.getY() - rm.viewerPosY,
+                    b.pos.getZ() - rm.viewerPosZ + 0.5);
+            // Setting "Fake blocks look slightly off": turned a quarter, so the texture runs the wrong way.
+            if (off) GlStateManager.rotate(90f, 0f, 1f, 0f);
+            GlStateManager.translate(-0.5, 0, -0.5);
+            wr.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
+            wr.setTranslation(-b.pos.getX(), -b.pos.getY(), -b.pos.getZ());
+            mc.getBlockRendererDispatcher().renderBlock(b.state, b.pos, mc.theWorld, wr);
+            wr.setTranslation(0, 0, 0);
+            tes.draw();
             GlStateManager.popMatrix();
         }
+        GlStateManager.shadeModel(GL11.GL_FLAT);
         mc.entityRenderer.disableLightmap();
-        RenderHelper.disableStandardItemLighting();
         GlStateManager.popMatrix();
     }
 
@@ -659,7 +888,7 @@ final class Hallucinations {
         else if ("fakeBed".equals(key)) fakeBedDestroyed();
         else if ("fakeBridger".equals(key) && !spawnBridger() && mc.currentScreen != null) {
             // Only the Test button explains; a random one with no gap around you just doesn't happen.
-            mc.ingameGUI.setRecordPlaying("§eNo gap in front of you to bridge across: stand near an edge", false);
+            mc.ingameGUI.setRecordPlaying("§eNo gap to bridge across out of your sight: stand near an edge or the void", false);
         } else if ("fakeFill".equals(key)) {
             // Test: fill every bridge hole nearby (not just some) for 30 seconds, and say how many.
             testFillUntil = System.currentTimeMillis() + 30000;
@@ -724,8 +953,8 @@ final class Hallucinations {
         for (java.util.Iterator<java.util.Map.Entry<BlockPos, FakeBlock>> it = fills.entrySet().iterator(); it.hasNext(); ) {
             java.util.Map.Entry<BlockPos, FakeBlock> en = it.next();
             BlockPos b = en.getKey();
-            // Standing on it (or already dropping through it).
-            if (b.getX() == px && b.getZ() == pz && p.posY < b.getY() + 1.6 && p.posY > b.getY() - 3) {
+            // Directly over it at any height (walking, jumping over it, or dropping through it).
+            if (b.getX() == px && b.getZ() == pz && p.posY < b.getY() + 8 && p.posY > b.getY() - 3) {
                 fakeBlocks.remove(en.getValue());
                 it.remove();
                 passed.add(b);
@@ -797,7 +1026,7 @@ final class Hallucinations {
             f.age++;
             double t = Math.min(1.0, f.age / (double) f.ticks);
             f.place(t);
-            if (t >= 1.0) {
+            if (t >= 1.0 || f.done) {
                 f.finish();
                 if (f.entity != null) w.removeEntityFromWorld(f.id);
                 active.remove(i--);
