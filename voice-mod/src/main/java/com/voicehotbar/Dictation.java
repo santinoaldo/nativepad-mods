@@ -4,7 +4,9 @@ package com.voicehotbar;
 final class Dictation {
 
     /** Minecraft 1.8.9's chat length limit. */
-    static final int MAX_LENGTH = 100;
+    /** Upper bound only. Minecraft's own chat packet applies the real limit: 100 in vanilla 1.8.9, 256 where
+     *  mods like Patcher raise it on servers that allow it (e.g. Hypixel), so dictation matches typing. */
+    static final int MAX_LENGTH = 256;
 
     private Dictation() {
     }
