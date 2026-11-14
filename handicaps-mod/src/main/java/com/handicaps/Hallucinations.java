@@ -6,7 +6,18 @@ import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.entity.EntityOtherPlayerMP;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.network.NetworkPlayerInfo;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.renderer.entity.RenderManager;
+import net.minecraft.client.renderer.texture.TextureMap;
+import net.minecraft.init.Blocks;
+import net.minecraft.scoreboard.ScorePlayerTeam;
+import net.minecraft.util.BlockPos;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.projectile.EntityLargeFireball;
 import net.minecraft.init.Items;
@@ -286,6 +297,198 @@ final class Hallucinations {
         add(new ArrowFake(s[0], s[1], s[2], ex, ey, ez, ticks));
     }
 
+    // ---- fake bridger: someone speed-bridging toward you with wool that only exists on your screen ----
+
+    /** A block that is only drawn; it is never put in the world (you can't touch, select or stand on it). */
+    private static final class FakeBlock {
+        final BlockPos pos;
+        final IBlockState state;
+        final Fake owner;
+
+        FakeBlock(BlockPos pos, IBlockState state, Fake owner) {
+            this.pos = pos;
+            this.state = state;
+            this.owner = owner;
+        }
+    }
+
+    private final List<FakeBlock> fakeBlocks = new ArrayList<FakeBlock>();
+
+    private final class BridgerFake extends Fake {
+        private final int[] cx, cz;          // cells from the start to where they stop, in order
+        private final boolean[] needsBlock;  // air under that cell: a fake block goes there first
+        private final int[] segStart;        // tick at which they start moving onto each cell
+        private final int y, wool;
+        private final float faceYaw;
+        private int reached;                 // last cell whose block has been placed / step started
+
+        BridgerFake(int[] cx, int[] cz, boolean[] needsBlock, int[] segStart, int y, float faceYaw,
+                    GameProfile profile, int wool) {
+            super(cx[0] + 0.5, y, cz[0] + 0.5, cx[cx.length - 1] + 0.5, y, cz[cz.length - 1] + 0.5,
+                    segStart[cx.length - 1] + 12); // plus a short pause at the end before vanishing
+            this.cx = cx;
+            this.cz = cz;
+            this.needsBlock = needsBlock;
+            this.segStart = segStart;
+            this.y = y;
+            this.wool = wool;
+            this.faceYaw = faceYaw;
+            FakePlayer p = new FakePlayer(mc.theWorld, profile);
+            p.inventory.setInventorySlotContents(0, new ItemStack(Blocks.wool, 64, wool));
+            p.inventory.currentItem = 0;
+            p.setSneaking(true); // crouched at the edge, like a real bridger
+            p.setPositionAndRotation(sx, sy, sz, faceYaw, 75);
+            p.rotationYawHead = faceYaw;
+            entity = p;
+        }
+
+        @Override
+        void place(double t) {
+            FakePlayer p = (FakePlayer) entity;
+            int last = cx.length - 1;
+            // They move from cell i-1 onto cell i between segStart[i-1] and segStart[i]; the block goes down first.
+            while (reached < last && age >= segStart[reached]) {
+                reached++;
+                if (needsBlock[reached]) {
+                    BlockPos pos = new BlockPos(cx[reached], y - 1, cz[reached]);
+                    fakeBlocks.add(new FakeBlock(pos, Blocks.wool.getStateFromMeta(wool), this));
+                    sound("dig.cloth", 1.0f, 0.8f, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+                    p.swingItem();
+                }
+            }
+            // Position: back from cell i-1 to cell i during [segStart[i-1], segStart[i]].
+            double x = cx[last] + 0.5, z = cz[last] + 0.5;
+            for (int i = 1; i <= last; i++) {
+                if (age < segStart[i]) {
+                    double f = Math.max(0, (age - segStart[i - 1]) / (double) (segStart[i] - segStart[i - 1]));
+                    x = cx[i - 1] + 0.5 + (cx[i] - cx[i - 1]) * f;
+                    z = cz[i - 1] + 0.5 + (cz[i] - cz[i - 1]) * f;
+                    break;
+                }
+            }
+            p.setPositionAndRotation2(x, y, z, faceYaw, 75, 3, false);
+            p.rotationYawHead = faceYaw;
+        }
+
+        @Override
+        void finish() {
+            for (int i = 0; i < fakeBlocks.size(); i++) {
+                if (fakeBlocks.get(i).owner == this) fakeBlocks.remove(i--);
+            }
+        }
+    }
+
+    /**
+     * Finds a real place to bridge from: solid ground in front of you (or to the side), with open air
+     * between it and you at your floor level. Returns false (and shows nothing) if there's no such spot.
+     */
+    private boolean spawnBridger() {
+        EntityPlayerSP p = mc.thePlayer;
+        int y = (int) Math.floor(p.posY + 0.01);
+        int px = (int) Math.floor(p.posX), pz = (int) Math.floor(p.posZ);
+        double look = Math.toRadians(p.rotationYaw);
+        final double lx = -Math.sin(look), lz = Math.cos(look);
+        // The four straight directions (bridges run along the grid), most in front of you first; never from behind.
+        Integer[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        java.util.Arrays.sort(dirs, new java.util.Comparator<Integer[]>() {
+            @Override
+            public int compare(Integer[] a, Integer[] b) {
+                return Double.compare(b[0] * lx + b[1] * lz, a[0] * lx + a[1] * lz);
+            }
+        });
+        int[] sides = {0, 1, -1, 2, -2};
+        for (Integer[] d : dirs) {
+            if (d[0] * lx + d[1] * lz < -0.3) continue;
+            for (int side : sides) {
+                for (int attempt = 0; attempt < 4; attempt++) {
+                    int dist = 9 + rnd.nextInt(8); // starts 9-16 blocks away, stops 3 blocks short of you
+                    int n = dist - 3 + 1;
+                    int[] cx = new int[n], cz = new int[n];
+                    boolean[] need = new boolean[n];
+                    int blocks = 0;
+                    boolean ok = true;
+                    for (int i = 0; i < n && ok; i++) {
+                        int along = dist - i;
+                        cx[i] = px + d[0] * along - d[1] * side;
+                        cz[i] = pz + d[1] * along + d[0] * side;
+                        if (solid(cx[i], y, cz[i]) || solid(cx[i], y + 1, cz[i])) ok = false; // body must fit
+                        else if (solid(cx[i], y - 1, cz[i])) need[i] = false;               // real ground
+                        else if (mc.theWorld.isAirBlock(new BlockPos(cx[i], y - 1, cz[i]))) {
+                            need[i] = true;
+                            blocks++;
+                        } else ok = false; // water, lava, plants: not a clean gap to bridge
+                    }
+                    if (!ok || need[0] || blocks < 3) continue; // must start on real ground and actually bridge
+                    int[] segStart = new int[n];
+                    for (int i = 1; i < n; i++) {
+                        // ~3.5 blocks/s while bridging (a block every 5-6 ticks), faster over real ground.
+                        segStart[i] = segStart[i - 1] + (need[i] ? 5 + rnd.nextInt(2) : 3);
+                    }
+                    float yaw = (float) Math.toDegrees(Math.atan2(-d[0], d[1])); // facing away from you
+                    GameProfile profile = randomProfile();
+                    add(new BridgerFake(cx, cz, need, segStart, y, yaw, profile, teamWool(profile.getName())));
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Their team's wool color, from the scoreboard team prefix (Hypixel colors names by team). */
+    private int teamWool(String name) {
+        ScorePlayerTeam team = mc.theWorld.getScoreboard().getPlayersTeam(name);
+        if (team == null) return 0;
+        String pre = team.getColorPrefix();
+        for (int i = 0; i + 1 < pre.length(); i++) {
+            if (pre.charAt(i) != '§') continue;
+            switch (Character.toLowerCase(pre.charAt(i + 1))) {
+                case 'c': case '4': return 14; // red
+                case '9': case '1': return 11; // blue
+                case 'a': return 5;            // lime (green team)
+                case '2': return 13;           // dark green
+                case 'e': return 4;            // yellow
+                case '6': return 1;            // orange
+                case 'b': case '3': return 9;  // aqua -> cyan
+                case 'd': return 6;            // pink
+                case '5': return 10;           // purple
+                case '8': return 7;            // gray
+                case '7': return 8;            // light gray
+                case '0': return 15;           // black
+                case 'f': return 0;            // white
+                default: break;                // formatting code (bold etc.): keep looking
+            }
+        }
+        return 0;
+    }
+
+    /** Draws the fake blocks. Runs before the fog/blur pass so they get fogged like real blocks. */
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public void onRenderWorld(RenderWorldLastEvent e) {
+        if (fakeBlocks.isEmpty() || mc.theWorld == null) return;
+        RenderManager rm = mc.getRenderManager();
+        GlStateManager.pushMatrix();
+        GlStateManager.enableDepth();
+        GlStateManager.disableBlend();
+        GlStateManager.enableCull();
+        GlStateManager.color(1f, 1f, 1f, 1f);
+        mc.getTextureManager().bindTexture(TextureMap.locationBlocksTexture);
+        RenderHelper.enableStandardItemLighting(); // shaded faces, like real blocks
+        mc.entityRenderer.enableLightmap();
+        for (FakeBlock b : fakeBlocks) {
+            int light = mc.theWorld.getCombinedLight(b.pos, 0); // same light as the air it sits in
+            OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light % 65536, light / 65536);
+            GlStateManager.pushMatrix();
+            // +1 on z: the block-model renderer turns the model 90 degrees, which shifts it one block.
+            GlStateManager.translate(b.pos.getX() - rm.viewerPosX, b.pos.getY() - rm.viewerPosY,
+                    b.pos.getZ() - rm.viewerPosZ + 1);
+            mc.getBlockRendererDispatcher().renderBlockBrightness(b.state, 1.0f);
+            GlStateManager.popMatrix();
+        }
+        mc.entityRenderer.disableLightmap();
+        RenderHelper.disableStandardItemLighting();
+        GlStateManager.popMatrix();
+    }
+
     // ---- fake "BED DESTROYED!" ----
 
     private void fakeBedDestroyed() {
@@ -311,6 +514,10 @@ final class Hallucinations {
         else if ("fakeInvisible".equals(key)) spawnInvisible();
         else if ("fakeArrow".equals(key)) spawnArrow();
         else if ("fakeBed".equals(key)) fakeBedDestroyed();
+        else if ("fakeBridger".equals(key) && !spawnBridger() && mc.currentScreen != null) {
+            // Only the Test button explains; a random one with no gap around you just doesn't happen.
+            mc.ingameGUI.setRecordPlaying("§eNo gap in front of you to bridge across: stand near an edge", false);
+        }
     }
 
     @SubscribeEvent
@@ -320,6 +527,7 @@ final class Hallucinations {
         WorldClient w = mc.theWorld;
         if (p == null || w == null) {
             active.clear();
+            fakeBlocks.clear();
             nextAt = 0;
             return;
         }
@@ -350,6 +558,7 @@ final class Hallucinations {
             if (c.fakeInvisible) on.add("fakeInvisible");
             if (c.fakeArrow) on.add("fakeArrow");
             if (c.fakeBed) on.add("fakeBed");
+            if (c.fakeBridger) on.add("fakeBridger");
             if (!on.isEmpty()) test(on.get(rnd.nextInt(on.size())));
             nextAt = now + gap(c);
         }

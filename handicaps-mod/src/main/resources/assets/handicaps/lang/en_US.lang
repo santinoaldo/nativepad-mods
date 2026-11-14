@@ -49,3 +49,4 @@ handicaps.paranoia.fight=A fight nearby
 handicaps.hallucinations.fakeInvisible=Invisible player sneaking up
 handicaps.hallucinations.fakeArrow=Arrow flying past you
 handicaps.hallucinations.fakeBed=Fake "BED DESTROYED!"
+handicaps.hallucinations.fakeBridger=Someone bridging toward you

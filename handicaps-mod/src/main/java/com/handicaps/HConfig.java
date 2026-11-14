@@ -42,7 +42,7 @@ final class HConfig {
     boolean paranoia;
     private final java.util.EnumMap<ParanoiaSound, Boolean> paranoiaSounds = new java.util.EnumMap<ParanoiaSound, Boolean>(ParanoiaSound.class);
     float paranoiaEvery, paranoiaVolume;
-    boolean hallucinations, fakeFireballs, fakePlayers, fakeInvisible, fakeArrow, fakeBed;
+    boolean hallucinations, fakeFireballs, fakePlayers, fakeInvisible, fakeArrow, fakeBed, fakeBridger;
     float hallucinationEvery;
     String paranoiaSet;
 
@@ -163,6 +163,7 @@ final class HConfig {
         fakeInvisible = hallu("fakeInvisible", "An invisible player: footprints and footsteps walk up to you, but nobody is there.");
         fakeArrow = hallu("fakeArrow", "An arrow is shot from far away and whizzes past your head.");
         fakeBed = hallu("fakeBed", "The BED DESTROYED! alert (title, sound, chat line), but your bed is fine.");
+        fakeBridger = hallu("fakeBridger", "A player from the tab list speed-bridges toward you with their team's wool. The blocks are only drawn on your screen, never added to the world.");
 
         category(GENERAL, "General", "");
         category(SIGHT, "Short sight (fog)", "You can only see a few blocks.");
