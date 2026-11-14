@@ -425,70 +425,72 @@ final class Hallucinations {
     }
 
     /**
-     * Finds a line in front of you (or to the side) with open air between it and you at your floor level.
-     * If they start over the void, the bridge they've already built trails behind them.
-     * Returns false (and shows nothing) if there's no gap to bridge across.
+     * Picks a line that crosses in front of you: they start just off-screen to your left or right, a few blocks
+     * ahead, and bridge sideways across your view (backwards, crouched, like a real bridger), finishing near the
+     * edge of your view on the other side. If they start over the void, a short bit of the bridge they've already
+     * built trails behind them (off-screen). Returns false (and shows nothing) if there's no gap to bridge across.
      */
     private boolean spawnBridger() {
         EntityPlayerSP p = mc.thePlayer;
         int y = (int) Math.floor(p.posY + 0.01);
         int px = (int) Math.floor(p.posX), pz = (int) Math.floor(p.posZ);
         double look = Math.toRadians(p.rotationYaw);
-        final double lx = -Math.sin(look), lz = Math.cos(look);
-        // The four straight directions (bridges run along the grid), most in front of you first; never from behind.
-        Integer[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        java.util.Arrays.sort(dirs, new java.util.Comparator<Integer[]>() {
-            @Override
-            public int compare(Integer[] a, Integer[] b) {
-                return Double.compare(b[0] * lx + b[1] * lz, a[0] * lx + a[1] * lz);
-            }
-        });
-        int[] sides = {0, 1, -1, 2, -2};
-        for (Integer[] d : dirs) {
-            if (d[0] * lx + d[1] * lz < -0.3) continue;
-            for (int side : sides) {
-                for (int attempt = 0; attempt < 4; attempt++) {
-                    int dist = 9 + rnd.nextInt(8); // starts 9-16 blocks away, stops 3 blocks short of you
-                    int n = dist - 3 + 1;
-                    int[] cx = new int[n], cz = new int[n];
-                    boolean[] need = new boolean[n];
-                    int blocks = 0;
-                    boolean ok = true;
-                    for (int i = 0; i < n && ok; i++) {
-                        int along = dist - i;
-                        cx[i] = px + d[0] * along - d[1] * side;
-                        cz[i] = pz + d[1] * along + d[0] * side;
-                        if (solid(cx[i], y, cz[i]) || solid(cx[i], y + 1, cz[i])) ok = false; // body must fit
-                        else if (solid(cx[i], y - 1, cz[i])) need[i] = false;               // real ground
-                        else if (mc.theWorld.isAirBlock(new BlockPos(cx[i], y - 1, cz[i]))) {
-                            need[i] = true;
-                            blocks++;
-                        } else ok = false; // water, lava, plants: not a clean gap to bridge
-                    }
-                    if (!ok || blocks < 3) continue; // must actually bridge across a gap
-                    // Starting over the void: they're already partway across, so the bridge they've built so far
-                    // trails out behind them (back toward wherever they came from, or until it reaches land).
-                    List<BlockPos> trail = new ArrayList<BlockPos>();
-                    if (need[0]) {
-                        trail.add(new BlockPos(cx[0], y - 1, cz[0]));
-                        int len = 6 + rnd.nextInt(12);
-                        for (int k = 1; k <= len; k++) {
-                            int tx = cx[0] + d[0] * k, tz = cz[0] + d[1] * k;
-                            BlockPos below = new BlockPos(tx, y - 1, tz);
-                            if (solid(tx, y, tz) || solid(tx, y + 1, tz) || !mc.theWorld.isAirBlock(below)) break;
-                            trail.add(below);
-                        }
-                    }
-                    int[] segStart = new int[n];
-                    for (int i = 1; i < n; i++) {
-                        // ~2.2 blocks/s, a normal crouch-bridging pace (a block every 8-10 ticks); a bit quicker over real ground.
-                        segStart[i] = segStart[i - 1] + (need[i] ? 8 + rnd.nextInt(3) : 6);
-                    }
-                    float yaw = (float) Math.toDegrees(Math.atan2(-d[0], d[1])); // facing away from you
-                    GameProfile profile = randomProfile();
-                    add(new BridgerFake(cx, cz, need, segStart, y, yaw, profile, teamWool(profile.getName()), trail));
-                    return true;
+        double lx = -Math.sin(look), lz = Math.cos(look);
+        // Forward = the grid direction closest to where you look; they travel along the perpendicular.
+        int fx, fz;
+        if (Math.abs(lx) > Math.abs(lz)) {
+            fx = lx > 0 ? 1 : -1;
+            fz = 0;
+        } else {
+            fx = 0;
+            fz = lz > 0 ? 1 : -1;
+        }
+        int firstSign = rnd.nextBoolean() ? 1 : -1;
+        int[] aheads = {4, 5, 3, 6, 7};
+        for (int ahead : aheads) {
+            for (int s = 0; s < 2; s++) {
+                int sign = s == 0 ? firstSign : -firstSign;
+                int mx = -fz * sign, mz = fx * sign; // direction of travel (sideways across your view)
+                // Start off-screen (more than ~60 degrees to the side), end just past the middle on the other side.
+                int from = -(ahead * 2 + 1), to = ahead + 1 + rnd.nextInt(2);
+                int n = to - from + 1;
+                int[] cx = new int[n], cz = new int[n];
+                boolean[] need = new boolean[n];
+                int blocks = 0;
+                boolean ok = true;
+                for (int i = 0; i < n && ok; i++) {
+                    int lat = from + i;
+                    cx[i] = px + fx * ahead + mx * lat;
+                    cz[i] = pz + fz * ahead + mz * lat;
+                    if (solid(cx[i], y, cz[i]) || solid(cx[i], y + 1, cz[i])) ok = false; // body must fit
+                    else if (solid(cx[i], y - 1, cz[i])) need[i] = false;               // real ground: walk
+                    else if (mc.theWorld.isAirBlock(new BlockPos(cx[i], y - 1, cz[i]))) {
+                        need[i] = true;
+                        blocks++;
+                    } else ok = false; // water, lava, plants: not a clean gap to bridge
                 }
+                if (!ok || blocks < 3) continue; // must actually bridge across a gap
+                // Already partway across: a short trail of their bridge behind them, out of view.
+                List<BlockPos> trail = new ArrayList<BlockPos>();
+                if (need[0]) {
+                    trail.add(new BlockPos(cx[0], y - 1, cz[0]));
+                    int len = 3 + rnd.nextInt(5);
+                    for (int k = 1; k <= len; k++) {
+                        int tx = cx[0] - mx * k, tz = cz[0] - mz * k;
+                        BlockPos below = new BlockPos(tx, y - 1, tz);
+                        if (solid(tx, y, tz) || solid(tx, y + 1, tz) || !mc.theWorld.isAirBlock(below)) break;
+                        trail.add(below);
+                    }
+                }
+                int[] segStart = new int[n];
+                for (int i = 1; i < n; i++) {
+                    // ~2.2 blocks/s, a normal crouch-bridging pace (a block every 8-10 ticks); a bit quicker over real ground.
+                    segStart[i] = segStart[i - 1] + (need[i] ? 8 + rnd.nextInt(3) : 6);
+                }
+                float yaw = (float) Math.toDegrees(Math.atan2(mx, -mz)); // facing back along their bridge
+                GameProfile profile = randomProfile();
+                add(new BridgerFake(cx, cz, need, segStart, y, yaw, profile, teamWool(profile.getName()), trail));
+                return true;
             }
         }
         return false;

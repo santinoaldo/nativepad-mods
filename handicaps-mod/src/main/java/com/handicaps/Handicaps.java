@@ -17,7 +17,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Keyboard;
 
-@Mod(modid = "handicaps", name = "Handicaps", version = "1.5.4", clientSideOnly = true,
+@Mod(modid = "handicaps", name = "Handicaps", version = "1.5.5", clientSideOnly = true,
         acceptedMinecraftVersions = "[1.8.9]", guiFactory = "com.handicaps.GuiFactory")
 public class Handicaps {
 
@@ -41,6 +41,7 @@ public class Handicaps {
         MinecraftForge.EVENT_BUS.register(new Effects());
         MinecraftForge.EVENT_BUS.register(new Paranoia());
         MinecraftForge.EVENT_BUS.register(new Hallucinations());
+        MinecraftForge.EVENT_BUS.register(new SeeThroughSettings());
         MinecraftForge.EVENT_BUS.register(this);
         ClientCommandHandler.instance.registerCommand(new HandicapsCommand());
     }

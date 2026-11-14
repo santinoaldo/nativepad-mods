@@ -25,7 +25,7 @@ import org.lwjgl.input.Keyboard;
 import java.io.File;
 import java.util.Set;
 
-@Mod(modid = "voicehotbar", name = "VoiceHotbar", version = "1.6.2", clientSideOnly = true,
+@Mod(modid = "voicehotbar", name = "VoiceHotbar", version = "1.6.3", clientSideOnly = true,
         acceptedMinecraftVersions = "[1.8.9]", guiFactory = "com.voicehotbar.VoiceHotbar$Factory")
 public class VoiceHotbar {
 
@@ -69,6 +69,7 @@ public class VoiceHotbar {
         listener.start(); // loads the model in the background so startup isn't slowed down
 
         MinecraftForge.EVENT_BUS.register(this);
+        MinecraftForge.EVENT_BUS.register(new SeeThroughSettings());
         ClientCommandHandler.instance.registerCommand(new VoiceCommand());
     }
 
