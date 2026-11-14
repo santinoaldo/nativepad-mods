@@ -1048,7 +1048,7 @@ final class Hallucinations {
             return;
         }
         if (nextAt == 0) nextAt = now + gap(c);
-        if (now >= nextAt && mc.currentScreen == null) {
+        if (now >= nextAt && mc.currentScreen == null && active.size() < 40) { // cap, for very short gaps
             List<String> on = new ArrayList<String>();
             if (c.fakeFireballs) on.add("fakeFireball");
             if (c.fakePlayers) on.add("fakePlayer");

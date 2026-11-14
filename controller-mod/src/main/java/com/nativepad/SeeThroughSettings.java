@@ -44,4 +44,27 @@ final class SeeThroughSettings {
             if (Minecraft.getMinecraft().theWorld == null) super.overlayBackground(startY, endY, startAlpha, endAlpha);
         }
     }
+
+    // ---- changes apply right away (no need to press Done) ----
+
+    /** After a click or slider drag is released in our settings: save and apply. */
+    @SubscribeEvent
+    public void onMouse(GuiScreenEvent.MouseInputEvent.Post e) {
+        if (org.lwjgl.input.Mouse.getEventButton() >= 0 && !org.lwjgl.input.Mouse.getEventButtonState()) autosave(e.gui);
+    }
+
+    /** After a key press in our settings (typing a number, Esc to leave): save and apply. */
+    @SubscribeEvent
+    public void onKey(GuiScreenEvent.KeyboardInputEvent.Post e) {
+        if (org.lwjgl.input.Keyboard.getEventKeyState()) autosave(e.gui);
+    }
+
+    private static void autosave(net.minecraft.client.gui.GuiScreen s) {
+        if (!(s instanceof GuiConfig)) return;
+        GuiConfig g = (GuiConfig) s;
+        if (!"nativepad".equals(g.modID) || g.entryList == null || !g.entryList.hasChangedEntry(true)) return;
+        g.entryList.saveConfigElements();
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new net.minecraftforge.fml.client.event.ConfigChangedEvent
+                .OnConfigChangedEvent(g.modID, g.configID, g.isWorldRunning, false));
+    }
 }

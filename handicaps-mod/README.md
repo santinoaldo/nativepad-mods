@@ -5,7 +5,7 @@ things harder for you, so there's nothing for a server to flag.
 
 ## Install
 
-Drop `Handicaps-1.6.0.jar` in your 1.8.9 Forge profile's `mods` folder. Open the settings with
+Drop `Handicaps-1.6.1.jar` in your 1.8.9 Forge profile's `mods` folder. Open the settings with
 `/handicaps` (or Mods → Handicaps → Config). Everything starts off: click the ON/OFF button next to a handicap to switch it, or click its name for its settings.
 
 ## Handicaps
@@ -36,6 +36,8 @@ Both can go on a controller button with NativePad's Controller Bindings.
 - Drunk moves your real aim in mouse-sized steps, like a shaky hand on a mouse.
 - Much of this mod was written with the help of an AI assistant.
 
+Settings save the moment you change them: no need to press **Done** (Esc or the back arrow keeps your changes too). Every slider has a small box on its right where you can type an exact number (click it, type, press Enter).
+
 ## Build
 
-Needs JDK 17: `gradlew build` → `build/libs/handicaps-1.6.0.jar`. MIT license.
+Needs JDK 17: `gradlew build` → `build/libs/handicaps-1.6.1.jar`. MIT license.

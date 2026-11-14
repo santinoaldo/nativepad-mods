@@ -5,7 +5,7 @@ Speech recognition runs offline on your PC (Vosk). Nothing is sent anywhere. Win
 
 ## Install
 
-Drop `VoiceHotbar-1.6.3.jar` in your 1.8.9 Forge profile's `mods` folder (alongside NativePad if you use it).
+Drop `VoiceHotbar-1.6.4.jar` in your 1.8.9 Forge profile's `mods` folder (alongside NativePad if you use it).
 The first launch unpacks the speech model (~70 MB) into a `voicehotbar` folder in your profile, which takes a few seconds.
 When it's ready you'll see `[Voice] Voice commands ready` in chat.
 
@@ -80,7 +80,9 @@ Saying a slot number (if you add them back) is the same as pressing a number key
 what's in it, which is close to "auto tool" style mods. Some servers (including Hypixel) don't allow those,
 so use at your own risk there. The number words are the safe option.
 
+Settings save the moment you change them: no need to press **Done** (Esc or the back arrow keeps your changes too).
+
 ## Build
 
-Needs JDK 17: `gradlew build` → `build/libs/voicehotbar-1.6.3.jar`.
+Needs JDK 17: `gradlew build` → `build/libs/voicehotbar-1.6.4.jar`.
 Speech recognition by [Vosk](https://alphacephei.com/vosk/) (Apache 2.0), small English model, and [whisper.cpp](https://github.com/ggml-org/whisper.cpp) v1.8.2 (MIT) with the base.en model.

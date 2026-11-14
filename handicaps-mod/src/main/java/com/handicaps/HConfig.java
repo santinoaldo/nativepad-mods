@@ -137,7 +137,7 @@ final class HConfig {
         drunkStrength = slider(DRUNK, "strength", 0.6f, 0.1f, 2f, "How drunk.");
 
         paranoia = bool(PARANOIA, "enabled", false, "Fake sounds from behind you: footsteps sneaking up, bridging, wool breaking, fall damage, combat.");
-        paranoiaEvery = slider(PARANOIA, "every", 25f, 5f, 120f, "About how many seconds between fake sounds (randomized).");
+        paranoiaEvery = slider(PARANOIA, "every", 25f, 0.01f, 120f, "About how many seconds between fake sounds (randomized).");
         paranoiaVolume = slider(PARANOIA, "volume", 1f, 0f, 1f, "Volume of the fake sounds and the Test buttons (1 = normal game volume).");
         Property set = cfg.get(PARANOIA, "soundSet", "Bedwars", "Which game's sounds to fake.", new String[]{"Bedwars"});
         set.setLanguageKey("handicaps." + PARANOIA + ".soundSet");
@@ -159,7 +159,7 @@ final class HConfig {
         hallucinations = bool(HALLU, "enabled", false,
                 "Fake fireballs and players that only you can see. They can't hurt you and can't be hit.");
         fakeBlocksOff = bool(HALLU, "fakeBlocksOff", false, "Fake blocks (bridger, bridge holes) are drawn with their texture turned sideways, so a careful look tells them apart from real ones.");
-        hallucinationEvery = slider(HALLU, "every", 45f, 10f, 180f, "About how many seconds between hallucinations (randomized).");
+        hallucinationEvery = slider(HALLU, "every", 45f, 0.01f, 180f, "About how many seconds between hallucinations (randomized).");
         fakeFireballs = hallu("fakeFireball", "A fireball flies at you and 'explodes' next to you (no damage).");
         fakePlayers = hallu("fakePlayer", "A player from the tab list sprints at you with a sword, then vanishes.");
         fakeInvisible = hallu("fakeInvisible", "An invisible player: footprints and footsteps walk up to you, but nobody is there.");
