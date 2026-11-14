@@ -25,7 +25,7 @@ import org.lwjgl.input.Keyboard;
 import java.io.File;
 import java.util.Set;
 
-@Mod(modid = "voicehotbar", name = "VoiceHotbar", version = "1.6.0", clientSideOnly = true,
+@Mod(modid = "voicehotbar", name = "VoiceHotbar", version = "1.6.1", clientSideOnly = true,
         acceptedMinecraftVersions = "[1.8.9]", guiFactory = "com.voicehotbar.VoiceHotbar$Factory")
 public class VoiceHotbar {
 

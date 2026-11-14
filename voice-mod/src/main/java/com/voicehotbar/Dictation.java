@@ -83,6 +83,13 @@ final class Dictation {
                                 score = 0.7 - 0.05 * d - 0.001 * Math.abs(cand.length() - norm.length());
                             }
                         }
+                        // 3) Short names (4 sounds, e.g. PaiXD = p-k-s-t): an exact sound match is enough when the
+                        //    spelling is also close and about the same length ("PAYXD" -> PaiXD).
+                        if (score == 0 && borrow == 0 && nameSound.length() == 4 && candSound.equals(nameSound)
+                                && Math.abs(cand.length() - norm.length()) <= 1
+                                && 1.0 - (double) levenshtein(cand, norm) / Math.max(cand.length(), norm.length()) >= 0.6) {
+                            score = 0.69;
+                        }
                         if (score > 0 && score > bestScore + 1e-9) {
                             bestScore = score;
                             bestName = nameList.get(n);
