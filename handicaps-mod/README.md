@@ -5,7 +5,7 @@ things harder for you, so there's nothing for a server to flag.
 
 ## Install
 
-Drop `Handicaps-1.5.0.jar` in your 1.8.9 Forge profile's `mods` folder. Open the settings with
+Drop `Handicaps-1.5.1.jar` in your 1.8.9 Forge profile's `mods` folder. Open the settings with
 `/handicaps` (or Mods → Handicaps → Config). Everything starts off: click the ON/OFF button next to a handicap to switch it, or click its name for its settings.
 
 ## Handicaps

@@ -421,8 +421,8 @@ final class Hallucinations {
                     if (!ok || need[0] || blocks < 3) continue; // must start on real ground and actually bridge
                     int[] segStart = new int[n];
                     for (int i = 1; i < n; i++) {
-                        // ~3.5 blocks/s while bridging (a block every 5-6 ticks), faster over real ground.
-                        segStart[i] = segStart[i - 1] + (need[i] ? 5 + rnd.nextInt(2) : 3);
+                        // ~2.2 blocks/s, a normal crouch-bridging pace (a block every 8-10 ticks); a bit quicker over real ground.
+                        segStart[i] = segStart[i - 1] + (need[i] ? 8 + rnd.nextInt(3) : 6);
                     }
                     float yaw = (float) Math.toDegrees(Math.atan2(-d[0], d[1])); // facing away from you
                     GameProfile profile = randomProfile();
