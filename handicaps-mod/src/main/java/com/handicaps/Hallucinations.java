@@ -256,7 +256,8 @@ final class Hallucinations {
 
     private void spawnFireball() {
         EntityPlayerSP p = mc.thePlayer;
-        double[] s = startPoint(18 + rnd.nextDouble() * 8, 2 + rnd.nextDouble() * 4);
+        // From 18 blocks (the minimum) up to 2.5x that (45 blocks), so some arrive fast and some from far off.
+        double[] s = startPoint(18 + rnd.nextDouble() * 27, 2 + rnd.nextDouble() * 4);
         // Lands 2-3 blocks in front of you (where you're facing), a little to either side.
         double look = Math.toRadians(p.rotationYaw), side = look + Math.PI / 2;
         double ahead = 2 + rnd.nextDouble(), offset = (rnd.nextDouble() - 0.5) * 1.4;
