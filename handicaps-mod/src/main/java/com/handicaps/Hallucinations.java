@@ -206,7 +206,7 @@ final class Hallucinations {
 
         @Override
         void place(double t) {
-            if (age % 5 != 0) return; // a step every quarter second (walking, maybe sneaking up)
+            if (age % 4 != 0) return; // a step every 0.2 s: running
             // Footprints alternate left and right of the walking line, like the invisibility footprints in Bedwars.
             double dx = ex - sx, dz = ez - sz, len = Math.sqrt(dx * dx + dz * dz);
             double side = (leftFoot ? 1 : -1) * 0.15;
@@ -220,16 +220,23 @@ final class Hallucinations {
     private void spawnInvisible() {
         EntityPlayerSP p = mc.thePlayer;
         double y = Math.floor(p.posY + 0.01);
+        // They run past you (just beside you, or right through on a 1-wide bridge) and keep going 8-15 blocks.
+        double[] sideOffsets = {0.9, -0.9, 0.5, -0.5, 0.0};
         for (int attempt = 0; attempt < 24; attempt++) {
             // Can come from anywhere around you, including behind.
             double yaw = Math.toRadians(p.rotationYaw + rnd.nextDouble() * 360), dist = 8 + rnd.nextDouble() * 6;
             double sx = p.posX - Math.sin(yaw) * dist, sz = p.posZ + Math.cos(yaw) * dist;
-            double dx = p.posX - sx, dz = p.posZ - sz, len = Math.sqrt(dx * dx + dz * dz);
-            double ex = p.posX - dx / len * 1.2, ez = p.posZ - dz / len * 1.2;
-            if (!walkable(sx, y, sz, ex, ez)) continue;
-            int ticks = Math.max(10, (int) ((len - 1.2) / 0.2)); // walking pace ~4 blocks/s
-            add(new InvisibleFake(sx, y, sz, ex, y, ez, ticks));
-            return;
+            double ux = (p.posX - sx) / dist, uz = (p.posZ - sz) / dist; // direction toward you
+            for (double off : sideOffsets) {
+                double px = p.posX - uz * off, pz = p.posZ + ux * off;   // where they pass you
+                double sx2 = px - ux * dist, sz2 = pz - uz * dist;       // start, lined up with that pass
+                double beyond = 8 + rnd.nextDouble() * 7;
+                double ex = px + ux * beyond, ez = pz + uz * beyond;     // and carry on past you
+                if (!walkable(sx2, y, sz2, px, pz) || !walkable(px, y, pz, ex, ez)) continue;
+                int ticks = Math.max(10, (int) ((dist + beyond) / 0.28)); // sprinting ~5.6 blocks/s
+                add(new InvisibleFake(sx2, y, sz2, ex, y, ez, ticks));
+                return;
+            }
         }
     }
 
