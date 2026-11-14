@@ -852,8 +852,17 @@ final class Hallucinations {
         // From 18 blocks (the minimum) up to 2.5x that (45 blocks); overshoots are lobbed from higher up.
         double height = kind == 2 ? 9 + rnd.nextDouble() * 5 : 2 + rnd.nextDouble() * 4;
         double[] s = startPoint(18 + rnd.nextDouble() * 27, height);
+        // Lead the shot like a good player: aim where you'll be when it arrives (your speed x its flight time).
+        // Two passes, since the flight time depends on where it aims.
+        double vxp = p.posX - p.lastTickPosX, vzp = p.posZ - p.lastTickPosZ; // your movement per tick
+        double tx = p.posX, tz = p.posZ;
+        for (int pass = 0; pass < 2; pass++) {
+            double fly = Math.sqrt((tx - s[0]) * (tx - s[0]) + (tz - s[2]) * (tz - s[2])) / 1.1; // ticks to arrive
+            tx = p.posX + vxp * fly;
+            tz = p.posZ + vzp * fly;
+        }
         // Directions relative to the fireball's own flight: u = toward you, v = sideways.
-        double ux = p.posX - s[0], uz = p.posZ - s[2], ul = Math.sqrt(ux * ux + uz * uz);
+        double ux = tx - s[0], uz = tz - s[2], ul = Math.sqrt(ux * ux + uz * uz);
         ux /= ul;
         uz /= ul;
         double vx = -uz, vz = ux, along, across;
@@ -874,7 +883,7 @@ final class Hallucinations {
                 along = (rnd.nextDouble() - 0.5) * 0.8;
                 across = (rnd.nextDouble() - 0.5) * 0.8;
         }
-        double ex = p.posX + ux * along + vx * across, ez = p.posZ + uz * along + vz * across;
+        double ex = tx + ux * along + vx * across, ez = tz + uz * along + vz * across;
         double ey = p.posY + 0.3;
         double dist = Math.sqrt((ex - s[0]) * (ex - s[0]) + (ey - s[1]) * (ey - s[1]) + (ez - s[2]) * (ez - s[2]));
         add(new FireballFake(s[0], s[1], s[2], ex, ey, ez, Math.max(10, (int) (dist / 1.1))));
