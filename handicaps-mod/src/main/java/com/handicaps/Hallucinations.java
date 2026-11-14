@@ -153,17 +153,45 @@ final class Hallucinations {
             entity = p;
         }
 
+        /** About half of the fakes sprint-jump at you, chaining jumps like a real player. */
+        final boolean jumper = rnd.nextBoolean();
+        /** Current jump, simulated with vanilla physics: height above the floor and vertical speed. */
+        double jumpHeight, jumpSpeed;
+        boolean inAir;
+
         @Override
         void place(double t) {
             FakePlayer p = (FakePlayer) entity;
             float yaw = (float) Math.toDegrees(Math.atan2(-(ex - sx), ez - sz));
+            double x = x(t), z = z(t);
+
+            if (jumper && !inAir && t < 0.9 && hasHeadroom(x, y(t), z)) {
+                inAir = true;
+                jumpSpeed = 0.42; // vanilla jump velocity
+            }
+            if (inAir) {
+                // Vanilla: move by velocity, then gravity 0.08 and air drag 0.98 per tick (~1.25 block peak).
+                jumpHeight += jumpSpeed;
+                jumpSpeed = (jumpSpeed - 0.08) * 0.98;
+                if (jumpHeight <= 0) {
+                    jumpHeight = 0;
+                    inAir = false;
+                    sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.3f, 1.0f, x, y(t), z); // landing
+                }
+            }
+
             // Interpolated movement, exactly how real players arrive from the server (legs animate).
-            p.setPositionAndRotation2(x(t), y(t), z(t), yaw, 0, 3, false);
+            p.setPositionAndRotation2(x, y(t) + jumpHeight, z, yaw, 0, 3, false);
             p.rotationYawHead = yaw;
-            if (age % 6 == 0) {
-                sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.25f, 1.0f, x(t), y(t), z(t));
+            if (!inAir && age % 6 == 0) {
+                sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.25f, 1.0f, x, y(t), z);
             }
             if (t > 0.75 && age % 4 == 0) p.swingItem(); // swinging as it gets close
+        }
+
+        /** Room to jump: the block above head height must be free too. */
+        private boolean hasHeadroom(double x, double y, double z) {
+            return !solid((int) Math.floor(x), (int) y + 2, (int) Math.floor(z));
         }
     }
 
