@@ -297,33 +297,56 @@ final class Hallucinations {
 
     // ---- arrow fly-by: shot from far away, whizzes past your head, sticks in something behind you ----
 
-    private final class ArrowFake extends Fake {
-        private final float yaw, pitch;
+    /** Vanilla arrow physics per tick: move, then air drag x0.99, then gravity -0.05. */
+    private static final double ARROW_DRAG = 0.99, ARROW_GRAVITY = 0.05;
 
-        ArrowFake(double sx, double sy, double sz, double ex, double ey, double ez, int ticks) {
+    private final class ArrowFake extends Fake {
+        private double x, y, z, vx, vy, vz;
+
+        ArrowFake(double sx, double sy, double sz, double vx, double vy, double vz, double ex, double ey, double ez,
+                  int ticks) {
             super(sx, sy, sz, ex, ey, ez, ticks);
+            x = sx;
+            y = sy;
+            z = sz;
+            this.vx = vx;
+            this.vy = vy;
+            this.vz = vz;
             net.minecraft.entity.projectile.EntityArrow a = new net.minecraft.entity.projectile.EntityArrow(mc.theWorld);
-            double dx = ex - sx, dy = ey - sy, dz = ez - sz;
-            yaw = (float) Math.toDegrees(Math.atan2(dx, dz));
-            pitch = (float) Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
-            a.setPositionAndRotation(sx, sy, sz, yaw, pitch);
-            a.prevRotationYaw = yaw;
-            a.prevRotationPitch = pitch;
+            a.setPosition(sx, sy, sz);
+            aim(a);
+            a.prevRotationYaw = a.rotationYaw;
+            a.prevRotationPitch = a.rotationPitch;
             entity = a;
             sound("random.bow", 0.7f, 1.0f / (rnd.nextFloat() * 0.4f + 1.2f) + 0.5f, sx, sy, sz); // the distant shot
         }
 
+        /** Points the arrow along its current velocity, like vanilla (so it tips nose-down as it falls). */
+        private void aim(Entity a) {
+            a.rotationYaw = (float) Math.toDegrees(Math.atan2(vx, vz));
+            a.rotationPitch = (float) Math.toDegrees(Math.atan2(vy, Math.sqrt(vx * vx + vz * vz)));
+        }
+
         @Override
         void place(double t) {
-            entity.motionX = entity.motionY = entity.motionZ = 0;
-            entity.setPosition(x(t), y(t), z(t));
-            entity.rotationYaw = entity.prevRotationYaw = yaw;
-            entity.rotationPitch = entity.prevRotationPitch = pitch;
+            Entity a = entity;
+            a.prevRotationYaw = a.rotationYaw;
+            a.prevRotationPitch = a.rotationPitch;
+            x += vx;
+            y += vy;
+            z += vz;
+            vx *= ARROW_DRAG;
+            vy *= ARROW_DRAG;
+            vz *= ARROW_DRAG;
+            vy -= ARROW_GRAVITY;
+            a.motionX = a.motionY = a.motionZ = 0; // we move it ourselves
+            a.setPosition(x, y, z);
+            aim(a);
         }
 
         @Override
         void finish() {
-            sound("random.bowhit", 1.0f, 1.2f / (rnd.nextFloat() * 0.2f + 0.9f), ex, ey, ez); // thunk
+            sound("random.bowhit", 1.0f, 1.2f / (rnd.nextFloat() * 0.2f + 0.9f), x, y, z); // thunk
         }
     }
 
@@ -335,10 +358,45 @@ final class Hallucinations {
         double passOffset = (rnd.nextBoolean() ? 1 : -1) * (0.8 + rnd.nextDouble() * 0.6);
         double px = p.posX - Math.sin(side) * passOffset, pz = p.posZ + Math.cos(side) * passOffset;
         double py = p.posY + p.getEyeHeight();
-        double dx = px - s[0], dy = py - s[1], dz = pz - s[2], len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        double ex = px + dx / len * 8, ey = py + dy / len * 8, ez = pz + dz / len * 8;
-        int ticks = Math.max(6, (int) ((len + 8) / 2.0)); // arrows are fast: ~40 blocks/s
-        add(new ArrowFake(s[0], s[1], s[2], ex, ey, ez, ticks));
+        double hx = px - s[0], hz = pz - s[2], dist = Math.sqrt(hx * hx + hz * hz);
+        hx /= dist;
+        hz /= dist;
+        // Launch speed: a bow pulled 70-100% (full draw is 3 blocks/tick). Find the launch angle whose real,
+        // falling arc reaches your head height exactly when it passes you (lower of the two arcs).
+        double speed = 3.0 * (0.7 + rnd.nextDouble() * 0.3);
+        double lo = Math.toRadians(-30), hi = Math.toRadians(45);
+        for (int i = 0; i < 40; i++) {
+            double mid = (lo + hi) / 2;
+            if (heightAt(speed, mid, dist) < py - s[1]) lo = mid;
+            else hi = mid;
+        }
+        double angle = (lo + hi) / 2;
+        double vx = hx * speed * Math.cos(angle), vz = hz * speed * Math.cos(angle), vy = speed * Math.sin(angle);
+        // Fly it ahead of time to know when it's 8 blocks past you (where it "thunks" into something).
+        double x = 0, y = 0, svx = speed * Math.cos(angle), svy = vy;
+        int ticks = 0;
+        while (x < dist + 8 && ticks < 100) {
+            x += svx;
+            y += svy;
+            svx *= ARROW_DRAG;
+            svy = svy * ARROW_DRAG - ARROW_GRAVITY;
+            ticks++;
+        }
+        add(new ArrowFake(s[0], s[1], s[2], vx, vy, vz, s[0] + hx * x, s[1] + y, s[2] + hz * x, ticks));
+    }
+
+    /** Height gained (blocks) by an arrow shot at this speed and angle once it has flown this far sideways. */
+    private static double heightAt(double speed, double angle, double dist) {
+        double x = 0, y = 0, vx = speed * Math.cos(angle), vy = speed * Math.sin(angle);
+        for (int i = 0; i < 200 && x < dist; i++) {
+            double step = Math.min(1, (dist - x) / vx); // last partial step, so we land exactly on dist
+            x += vx * step;
+            y += vy * step;
+            vx *= ARROW_DRAG;
+            vy = vy * ARROW_DRAG - ARROW_GRAVITY;
+            if (vx < 1e-3) return Double.NEGATIVE_INFINITY;
+        }
+        return y;
     }
 
     // ---- fake bridger: someone speed-bridging toward you with wool that only exists on your screen ----
@@ -594,7 +652,103 @@ final class Hallucinations {
         else if ("fakeBridger".equals(key) && !spawnBridger() && mc.currentScreen != null) {
             // Only the Test button explains; a random one with no gap around you just doesn't happen.
             mc.ingameGUI.setRecordPlaying("§eNo gap in front of you to bridge across: stand near an edge", false);
+        } else if ("fakeFill".equals(key)) {
+            // Test: fill every bridge hole nearby (not just some) for 30 seconds, and say how many.
+            testFillUntil = System.currentTimeMillis() + 30000;
+            int n = scanFills(mc.theWorld, mc.thePlayer, true);
+            mc.ingameGUI.setRecordPlaying(n == 0 ? "§eNo holes in bridges within 20 blocks"
+                    : "§e" + n + " bridge hole" + (n == 1 ? "" : "s") + " filled with fake blocks for 30 s", false);
         }
+    }
+
+    // ---- fake bridge fill: holes in bridges look filled in, so you walk onto air ----
+
+    /** Fake blocks currently filling holes, by position. */
+    private final java.util.Map<BlockPos, FakeBlock> fills = new java.util.HashMap<BlockPos, FakeBlock>();
+    /** Holes we decided to leave open (so the choice doesn't flicker every scan). */
+    private final java.util.Set<BlockPos> leftOpen = new java.util.HashSet<BlockPos>();
+    private long testFillUntil;
+
+    /**
+     * Finds holes in bridges within 20 blocks and fills some of them (all, for the Test button) with a
+     * drawn-only copy of the bridge's block. Fills go away when the hole does (someone places a real block)
+     * or when you move away. Returns how many holes are filled now.
+     */
+    private int scanFills(WorldClient w, EntityPlayerSP p, boolean all) {
+        int px = (int) Math.floor(p.posX), py = (int) Math.floor(p.posY), pz = (int) Math.floor(p.posZ), r = 20;
+        java.util.Set<BlockPos> holes = new java.util.HashSet<BlockPos>();
+        for (int x = px - r; x <= px + r; x++) {
+            for (int z = pz - r; z <= pz + r; z++) {
+                for (int y = py - 5; y <= py + 1; y++) {
+                    if (!w.isAirBlock(new BlockPos(x, y, z))) continue;
+                    IBlockState fill = holeFill(w, x, y, z);
+                    if (fill == null) continue;
+                    BlockPos pos = new BlockPos(x, y, z);
+                    holes.add(pos);
+                    if (fills.containsKey(pos) || (!all && leftOpen.contains(pos))) continue;
+                    if (all || rnd.nextBoolean()) { // about half of the holes
+                        FakeBlock fb = new FakeBlock(pos, fill, null);
+                        fills.put(pos, fb);
+                        fakeBlocks.add(fb);
+                        leftOpen.remove(pos);
+                    } else {
+                        leftOpen.add(pos);
+                    }
+                }
+            }
+        }
+        // Holes that are gone (filled for real) or out of range: drop their fake block.
+        for (java.util.Iterator<java.util.Map.Entry<BlockPos, FakeBlock>> it = fills.entrySet().iterator(); it.hasNext(); ) {
+            java.util.Map.Entry<BlockPos, FakeBlock> en = it.next();
+            if (!holes.contains(en.getKey())) {
+                fakeBlocks.remove(en.getValue());
+                it.remove();
+            }
+        }
+        leftOpen.retainAll(holes);
+        return fills.size();
+    }
+
+    private void clearFills() {
+        for (FakeBlock fb : fills.values()) fakeBlocks.remove(fb);
+        fills.clear();
+        leftOpen.clear();
+    }
+
+    /**
+     * If (x, y, z) is part of a 1- or 2-block hole in a straight bridge, returns the bridge's block to fill it
+     * with; otherwise null. A hole: open air with a drop of 3+ blocks under it, and at least two of the same
+     * full block on each side along the line (e.g. wool wool _ wool wool, or wool wool _ _ wool wool).
+     */
+    private IBlockState holeFill(WorldClient w, int x, int y, int z) {
+        for (int k = 1; k <= 3; k++) if (!w.isAirBlock(new BlockPos(x, y - k, z))) return null; // must be a drop
+        int[][] axes = {{1, 0}, {0, 1}};
+        for (int[] a : axes) {
+            for (int width = 1; width <= 2; width++) {
+                for (int o = 0; o < width; o++) { // this cell is the o-th of the hole
+                    boolean ok = true;
+                    for (int g = -o; g < width - o && ok; g++) {
+                        if (g != 0 && !w.isAirBlock(new BlockPos(x + a[0] * g, y, z + a[1] * g))) ok = false;
+                    }
+                    if (!ok) continue;
+                    IBlockState s1 = bridgeBlock(w, x - a[0] * (o + 1), y, z - a[1] * (o + 1));
+                    IBlockState s2 = bridgeBlock(w, x - a[0] * (o + 2), y, z - a[1] * (o + 2));
+                    IBlockState s3 = bridgeBlock(w, x + a[0] * (width - o), y, z + a[1] * (width - o));
+                    IBlockState s4 = bridgeBlock(w, x + a[0] * (width - o + 1), y, z + a[1] * (width - o + 1));
+                    if (s1 == null || s2 == null || s3 == null || s4 == null) continue;
+                    net.minecraft.block.Block b = s1.getBlock();
+                    if (s2.getBlock() == b && s3.getBlock() == b && s4.getBlock() == b) return s1;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** A full solid block (wool, clay, wood, end stone...), or null. */
+    private IBlockState bridgeBlock(WorldClient w, int x, int y, int z) {
+        IBlockState s = w.getBlockState(new BlockPos(x, y, z));
+        net.minecraft.block.Block b = s.getBlock();
+        return b.isFullCube() && b.getMaterial().blocksMovement() ? s : null;
     }
 
     @SubscribeEvent
@@ -605,6 +759,8 @@ final class Hallucinations {
         if (p == null || w == null) {
             active.clear();
             fakeBlocks.clear();
+            fills.clear();
+            leftOpen.clear();
             nextAt = 0;
             return;
         }
@@ -624,6 +780,13 @@ final class Hallucinations {
 
         HConfig c = Handicaps.config;
         long now = System.currentTimeMillis();
+        // Bridge holes: kept up to date twice a second while on (or for 30 s after its Test button).
+        boolean testing = now < testFillUntil;
+        if ((c.active() && c.hallucinations && c.fakeFill) || testing) {
+            if (p.ticksExisted % 10 == 0) scanFills(w, p, testing);
+        } else if (!fills.isEmpty() || !leftOpen.isEmpty()) {
+            clearFills();
+        }
         if (!c.active() || !c.hallucinations) {
             nextAt = 0;
             return;
