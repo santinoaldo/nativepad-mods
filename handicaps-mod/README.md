@@ -5,7 +5,7 @@ things harder for you, so there's nothing for a server to flag.
 
 ## Install
 
-Drop `Handicaps-1.3.2.jar` in your 1.8.9 Forge profile's `mods` folder. Open the settings with
+Drop `Handicaps-1.3.3.jar` in your 1.8.9 Forge profile's `mods` folder. Open the settings with
 `/handicaps` (or Mods → Handicaps → Config). Everything starts off: click the ON/OFF button next to a handicap to switch it, or click its name for its settings.
 
 ## Handicaps
@@ -19,7 +19,7 @@ Drop `Handicaps-1.3.2.jar` in your 1.8.9 Forge profile's `mods` folder. Open the
 | **Deaf** | No game sounds or music (menu clicks still play). | |
 | **Drunk** | Swaying, tilting camera, wobbly double vision, and your aim slowly drifts. | strength |
 | **Paranoia** | Fake Bedwars sounds from behind you: footsteps sneaking up (wool, stone, wood), someone bridging toward you or breaking wool, fall damage, bow shots, TNT fuses, fireballs, ender pearls, eating and drinking. They come from a real direction, only you hear them. | how often (about every 25 s), volume, sound set (Bedwars; more game modes later), and an on/off switch **per sound** (14 of them, including a fight between two players) with a **Test** button next to each that plays it right away |
-| **Hallucinations** | Fake things only you can see: a **fireball** flies at you and "explodes" next to you (sound and particles, no damage), or a **player from the tab list** (their skin and name) sprints at you with a sword along real walkable ground (no running on air or through walls) and vanishes right before reaching you; if there is no walkable path, you get a fake fireball instead. They can't hurt you and your clicks pass through them. | how often (about every 45 s), each one on/off with a **Test** button |
+| **Hallucinations** | Fake things only you can see: a **fireball** flies at you and "explodes" 2-3 blocks in front of you (sound and particles, no damage), or a **player from the tab list** (their skin and name) sprints at you with a sword along real walkable ground (no running on air or through walls) and vanishes right before reaching you; if there is no walkable path, you get a fake fireball instead. They can't hurt you and your clicks pass through them. | how often (about every 45 s), each one on/off with a **Test** button |
 
 They stack: try short sight + grayscale + deaf.
 
@@ -38,4 +38,4 @@ Both can go on a controller button with NativePad's Controller Bindings.
 
 ## Build
 
-Needs JDK 17: `gradlew build` → `build/libs/handicaps-1.3.2.jar`. MIT license.
+Needs JDK 17: `gradlew build` → `build/libs/handicaps-1.3.3.jar`. MIT license.

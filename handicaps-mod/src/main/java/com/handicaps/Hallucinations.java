@@ -229,9 +229,12 @@ final class Hallucinations {
     private void spawnFireball() {
         EntityPlayerSP p = mc.thePlayer;
         double[] s = startPoint(18 + rnd.nextDouble() * 8, 2 + rnd.nextDouble() * 4);
-        // Lands 1-2 blocks from you: close enough to flinch, not on you.
-        double a = rnd.nextDouble() * Math.PI * 2, r = 1 + rnd.nextDouble();
-        double ex = p.posX + Math.cos(a) * r, ey = p.posY + 0.5, ez = p.posZ + Math.sin(a) * r;
+        // Lands 2-3 blocks in front of you (where you're facing), a little to either side.
+        double look = Math.toRadians(p.rotationYaw), side = look + Math.PI / 2;
+        double ahead = 2 + rnd.nextDouble(), offset = (rnd.nextDouble() - 0.5) * 1.4;
+        double ex = p.posX - Math.sin(look) * ahead - Math.sin(side) * offset;
+        double ez = p.posZ + Math.cos(look) * ahead + Math.cos(side) * offset;
+        double ey = p.posY + 0.3;
         double dist = Math.sqrt((ex - s[0]) * (ex - s[0]) + (ey - s[1]) * (ey - s[1]) + (ez - s[2]) * (ez - s[2]));
         add(new FireballFake(s[0], s[1], s[2], ex, ey, ez, Math.max(10, (int) (dist / 1.1))));
     }
