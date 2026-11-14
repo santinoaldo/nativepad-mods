@@ -88,6 +88,54 @@ final class Hallucinations {
 
         void finish() {
         }
+
+        // ---- walking over real terrain (players / invisible players) ----
+
+        /** Floor height (feet level) at evenly spaced points from start to end; null = flat at sy. */
+        int[] floors;
+        /** Body height and vertical speed, simulated with vanilla physics (jump 0.42, gravity 0.08, drag 0.98). */
+        double bodyY = Double.NaN, vy;
+        boolean inAir;
+
+        double floorAt(double t) {
+            if (floors == null) return y(t);
+            return floors[(int) Math.round(Math.max(0, Math.min(1, t)) * (floors.length - 1))];
+        }
+
+        /**
+         * Advances the body one tick and returns its height. Jumps up a 1-block step shortly before reaching it
+         * (a jump needs ~3 ticks to clear a block), falls off ledges, and can sprint-jump on flat ground.
+         * Returns +1 when it just landed (caller plays a landing sound), else 0, via {@link #landed}.
+         */
+        double body(double t, boolean wantJump) {
+            landed = false;
+            double now = floorAt(t), ahead = floorAt(t + 3.0 / ticks);
+            if (Double.isNaN(bodyY)) bodyY = now;
+            if (!inAir) {
+                if (ahead > bodyY + 0.01 || wantJump) {
+                    inAir = true;
+                    vy = 0.42;
+                } else if (now < bodyY - 0.01) {
+                    inAir = true; // walked off a ledge
+                    vy = 0;
+                } else {
+                    bodyY = now;
+                }
+            }
+            if (inAir) {
+                bodyY += vy;
+                vy = (vy - 0.08) * 0.98;
+                if (bodyY < now) bodyY = now; // never sink into the step being climbed
+                if (vy < 0 && bodyY <= now + 0.001) {
+                    bodyY = now;
+                    inAir = false;
+                    landed = true;
+                }
+            }
+            return bodyY;
+        }
+
+        boolean landed;
     }
 
     // ---- fake fireball ----
@@ -155,7 +203,10 @@ final class Hallucinations {
         PlayerFake(double sx, double sy, double sz, double ex, double ey, double ez, int ticks, GameProfile profile) {
             super(sx, sy, sz, ex, ey, ez, ticks);
             FakePlayer p = new FakePlayer(mc.theWorld, profile);
-            p.inventory.setInventorySlotContents(0, new ItemStack(rnd.nextBoolean() ? Items.iron_sword : Items.stone_sword));
+            ItemStack sword = seenSword(profile.getName()); // the sword they really had, if we've seen it
+            p.inventory.setInventorySlotContents(0, sword != null ? sword
+                    : new ItemStack(rnd.nextBoolean() ? Items.iron_sword : Items.stone_sword));
+            dress(p, profile.getName());
             p.inventory.currentItem = 0;
             float yaw = (float) Math.toDegrees(Math.atan2(-(ex - sx), ez - sz));
             p.setPositionAndRotation(sx, sy, sz, yaw, 0);
@@ -166,36 +217,19 @@ final class Hallucinations {
 
         /** About half of the fakes sprint-jump at you, chaining jumps like a real player. */
         final boolean jumper = rnd.nextBoolean();
-        /** Current jump, simulated with vanilla physics: height above the floor and vertical speed. */
-        double jumpHeight, jumpSpeed;
-        boolean inAir;
-
         @Override
         void place(double t) {
             FakePlayer p = (FakePlayer) entity;
             float yaw = (float) Math.toDegrees(Math.atan2(-(ex - sx), ez - sz));
             double x = x(t), z = z(t);
-
-            if (jumper && !inAir && t < 0.9 && hasHeadroom(x, y(t), z)) {
-                inAir = true;
-                jumpSpeed = 0.42; // vanilla jump velocity
-            }
-            if (inAir) {
-                // Vanilla: move by velocity, then gravity 0.08 and air drag 0.98 per tick (~1.25 block peak).
-                jumpHeight += jumpSpeed;
-                jumpSpeed = (jumpSpeed - 0.08) * 0.98;
-                if (jumpHeight <= 0) {
-                    jumpHeight = 0;
-                    inAir = false;
-                    sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.3f, 1.0f, x, y(t), z); // landing
-                }
-            }
+            double y = body(t, jumper && t < 0.9 && hasHeadroom(x, floorAt(t), z));
+            if (landed) sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.3f, 1.0f, x, y, z);
 
             // Interpolated movement, exactly how real players arrive from the server (legs animate).
-            p.setPositionAndRotation2(x, y(t) + jumpHeight, z, yaw, 0, 3, false);
+            p.setPositionAndRotation2(x, y, z, yaw, 0, 3, false);
             p.rotationYawHead = yaw;
             if (!inAir && age % 6 == 0) {
-                sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.25f, 1.0f, x, y(t), z);
+                sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.25f, 1.0f, x, y, z);
             }
             if (t > 0.75 && age % 4 == 0) p.swingItem(); // swinging as it gets close
         }
@@ -217,14 +251,16 @@ final class Hallucinations {
 
         @Override
         void place(double t) {
-            if (age % 4 != 0) return; // a step every 0.2 s: running
+            double y = body(t, false); // they jump up steps and drop off ledges too
+            if (landed) sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.3f, 1.0f, x(t), y, z(t));
+            if (inAir || age % 4 != 0) return; // a step every 0.2 s while running; no footprints mid-jump
             // Footprints alternate left and right of the walking line, like the invisibility footprints in Bedwars.
             double dx = ex - sx, dz = ez - sz, len = Math.sqrt(dx * dx + dz * dz);
             double side = (leftFoot ? 1 : -1) * 0.15;
             leftFoot = !leftFoot;
             double x = x(t) + (-dz / len) * side, z = z(t) + (dx / len) * side;
-            mc.theWorld.spawnParticle(EnumParticleTypes.FOOTSTEP, x, y(t) + 0.01, z, 0, 0, 0);
-            sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.2f, 1.0f, x, y(t), z);
+            mc.theWorld.spawnParticle(EnumParticleTypes.FOOTSTEP, x, y + 0.01, z, 0, 0, 0);
+            sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.2f, 1.0f, x, y, z);
         }
     }
 
@@ -243,9 +279,14 @@ final class Hallucinations {
                 double sx2 = px - ux * dist, sz2 = pz - uz * dist;       // start, lined up with that pass
                 double beyond = 8 + rnd.nextDouble() * 7;
                 double ex = px + ux * beyond, ez = pz + uz * beyond;     // and carry on past you
-                if (!walkable(sx2, y, sz2, px, pz) || !walkable(px, y, pz, ex, ez)) continue;
+                // Terrain along the whole run, traced outward from where they pass you (at your floor level).
+                int n = Math.max(2, (int) ((dist + beyond) / 0.25));
+                int[] floors = terrain(sx2, sz2, ex, ez, (int) Math.round(n * dist / (dist + beyond)), (int) y, n);
+                if (floors == null) continue;
                 int ticks = Math.max(10, (int) ((dist + beyond) / 0.28)); // sprinting ~5.6 blocks/s
-                add(new InvisibleFake(sx2, y, sz2, ex, y, ez, ticks));
+                InvisibleFake f = new InvisibleFake(sx2, floors[0], sz2, ex, floors[n], ez, ticks);
+                f.floors = floors;
+                add(f);
                 return;
             }
         }
@@ -336,6 +377,7 @@ final class Hallucinations {
             for (BlockPos b : trail) fakeBlocks.add(new FakeBlock(b, Blocks.wool.getStateFromMeta(wool), this));
             FakePlayer p = new FakePlayer(mc.theWorld, profile);
             p.inventory.setInventorySlotContents(0, new ItemStack(Blocks.wool, 64, wool));
+            dress(p, profile.getName());
             p.inventory.currentItem = 0;
             p.setSneaking(true); // crouched at the edge, like a real bridger
             p.setPositionAndRotation(sx, sy, sz, faceYaw, 75);
@@ -514,9 +556,11 @@ final class Hallucinations {
         EntityPlayerSP p = mc.thePlayer;
         sound("mob.wither.death", 1.0f, 1.0f, p.posX, p.posY, p.posZ);
         String by = randomProfile().getName();
+        String color = teamColor(by); // their team's color, like the real message
+        if (color == null) color = "§c";
         String[] how = {"was destroyed by", "was dismantled by", "was iced by", "got sent to the shadow realm by"};
         p.addChatMessage(new net.minecraft.util.ChatComponentText("\n§f§lBED DESTRUCTION > §7Your Bed "
-                + how[rnd.nextInt(how.length)] + " §c" + by + "§7!\n"));
+                + how[rnd.nextInt(how.length)] + " " + color + by + "§7!\n"));
     }
 
     // ---- scheduling ----
@@ -546,6 +590,7 @@ final class Hallucinations {
             nextAt = 0;
             return;
         }
+        if (p.ticksExisted % 20 == 0) trackGear(w); // remember everyone's armor once a second
         // Move/finish running hallucinations (Test buttons included).
         for (int i = 0; i < active.size(); i++) {
             Fake f = active.get(i);
@@ -613,42 +658,75 @@ final class Hallucinations {
             double[] s = startPoint(9 + rnd.nextDouble() * 9, 0);
             double dx = p.posX - s[0], dz = p.posZ - s[2], len = Math.sqrt(dx * dx + dz * dz);
             double ex = p.posX - dx / len * 1.5, ez = p.posZ - dz / len * 1.5;
-            if (!walkable(s[0], y, s[2], ex, ez)) continue;
+            // Terrain traced back from you: steps up/down of one block are fine (they jump / drop).
+            int n = Math.max(2, (int) ((len - 1.5) / 0.25));
+            int[] floors = terrain(s[0], s[2], ex, ez, n, (int) y, n);
+            if (floors == null) continue;
             int ticks = Math.max(10, (int) ((len - 1.5) / 0.28)); // sprint speed ~5.6 blocks/s
-            add(new PlayerFake(s[0], y, s[2], ex, y, ez, ticks, randomProfile()));
+            PlayerFake f = new PlayerFake(s[0], floors[0], s[2], ex, y, ez, ticks, randomProfile());
+            f.floors = floors;
+            add(f);
             return;
         }
         spawnFireball();
     }
 
-    /** Solid ground under every step of the path, and room for a body (feet and head clear). */
-    private boolean walkable(double sx, double y, double sz, double ex, double ez) {
-        double len = Math.sqrt((ex - sx) * (ex - sx) + (ez - sz) * (ez - sz));
-        int steps = Math.max(1, (int) (len / 0.4));
-        int by = (int) y;
-        for (int i = 0; i <= steps; i++) {
-            double t = i / (double) steps;
-            int bx = (int) Math.floor(sx + (ex - sx) * t), bz = (int) Math.floor(sz + (ez - sz) * t);
-            if (!solid(bx, by - 1, bz)) return false;           // nothing to stand on
-            if (solid(bx, by, bz) || solid(bx, by + 1, bz)) return false; // wall in the way
+    /**
+     * Traces the ground along the line a..b at n+1 evenly spaced points, starting at point {@code anchor} on floor
+     * {@code anchorFloor} and walking outward both ways. Each point may be one block higher (a step they jump up)
+     * or one block lower (a ledge they drop off) than its neighbour; walls of 2+ blocks, the void, or no room
+     * for a body make the path invalid (null). Returns the floor (feet) height at each point.
+     */
+    private int[] terrain(double ax, double az, double bx, double bz, int anchor, int anchorFloor, int n) {
+        int[] f = new int[n + 1];
+        if (!stand(cell(ax, bx, anchor, n), anchorFloor, cell(az, bz, anchor, n))) return null;
+        f[anchor] = anchorFloor;
+        for (int dir = -1; dir <= 1; dir += 2) {
+            for (int i = anchor + dir; i >= 0 && i <= n; i += dir) {
+                int x = cell(ax, bx, i, n), z = cell(az, bz, i, n), prev = f[i - dir];
+                if (stand(x, prev, z)) f[i] = prev;
+                else if (stand(x, prev + 1, z) && !solid(cell(ax, bx, i - dir, n), prev + 2, cell(az, bz, i - dir, n))) {
+                    f[i] = prev + 1; // one block up (room to jump from the lower side)
+                } else if (stand(x, prev - 1, z) && !solid(x, prev + 1, z)) {
+                    f[i] = prev - 1; // one block down
+                } else return null;
+            }
         }
-        return true;
+        return f;
+    }
+
+    private static int cell(double a, double b, int i, int n) {
+        return (int) Math.floor(a + (b - a) * i / n);
+    }
+
+    /** Somewhere a player can stand: solid block under the feet, feet and head clear. */
+    private boolean stand(int x, int y, int z) {
+        return solid(x, y - 1, z) && !solid(x, y, z) && !solid(x, y + 1, z);
     }
 
     private boolean solid(int x, int y, int z) {
         return mc.theWorld.getBlockState(new net.minecraft.util.BlockPos(x, y, z)).getBlock().getMaterial().blocksMovement();
     }
 
-    /** Copies someone from the tab list (so the fake has their skin and name), or a default player. */
+    /**
+     * Copies an enemy from the tab list (so the fake has their skin and name): someone on another team, never
+     * a teammate. Outside team games (no teams at all) anyone but you; with nobody else, a default player.
+     */
     private GameProfile randomProfile() {
+        // Teams are told apart by name color (Hypixel colors every name by team).
+        String myColor = teamColor(mc.thePlayer.getName());
         List<GameProfile> pool = new ArrayList<GameProfile>();
         if (mc.getNetHandler() != null) {
             for (NetworkPlayerInfo info : mc.getNetHandler().getPlayerInfoMap()) {
                 GameProfile gp = info.getGameProfile();
-                if (gp != null && gp.getName() != null && gp.getName().matches("[A-Za-z0-9_]{3,16}")
-                        && !gp.getId().equals(mc.thePlayer.getUniqueID())) {
-                    pool.add(gp);
+                if (gp == null || gp.getName() == null || !gp.getName().matches("[A-Za-z0-9_]{3,16}")
+                        || gp.getId().equals(mc.thePlayer.getUniqueID())) continue;
+                if (myColor != null) {
+                    String color = teamColor(gp.getName());
+                    // Teammate (same color), or no team (spectator / eliminated): skip.
+                    if (color == null || color.equals(myColor) || color.equals("§7")) continue;
                 }
+                pool.add(gp);
             }
         }
         if (!pool.isEmpty()) {
@@ -656,6 +734,89 @@ final class Hallucinations {
             return new GameProfile(gp.getId(), gp.getName());
         }
         return new GameProfile(UUID.randomUUID(), "Player" + (100 + rnd.nextInt(900)));
+    }
+
+    /** The color code their name is shown in (e.g. "§c" for red team), from the scoreboard team; null if none. */
+    private String teamColor(String name) {
+        ScorePlayerTeam team = mc.theWorld.getScoreboard().getPlayersTeam(name);
+        if (team == null) return null;
+        String pre = team.getColorPrefix();
+        for (int i = 0; i + 1 < pre.length(); i++) {
+            char c = Character.toLowerCase(pre.charAt(i + 1));
+            if (pre.charAt(i) == '§' && "0123456789abcdef".indexOf(c) >= 0) return "§" + c;
+        }
+        return null;
+    }
+
+    // ---- armor tracking: fakes wear what that player was really wearing ----
+
+    /** Last armor (boots..helmet) and sword seen on each real player your game has loaded. */
+    private final java.util.Map<String, ItemStack[]> seenGear = new java.util.HashMap<String, ItemStack[]>();
+    private WorldClient gearWorld;
+
+    private void trackGear(WorldClient w) {
+        if (w != gearWorld) { // new game or new server: old gear is meaningless
+            seenGear.clear();
+            gearWorld = w;
+        }
+        for (Object o : w.playerEntities) {
+            if (!(o instanceof EntityOtherPlayerMP) || o instanceof FakePlayer) continue;
+            EntityOtherPlayerMP other = (EntityOtherPlayerMP) o;
+            ItemStack[] gear = new ItemStack[5];
+            boolean any = false;
+            for (int i = 0; i < 4; i++) {
+                ItemStack a = other.getCurrentArmor(i);
+                gear[i] = a == null ? null : a.copy();
+                any |= a != null;
+            }
+            ItemStack held = other.getHeldItem();
+            ItemStack[] old = seenGear.get(other.getName());
+            if (held != null && held.getItem() instanceof net.minecraft.item.ItemSword) gear[4] = held.copy();
+            else if (old != null) gear[4] = old[4]; // keep the last sword we saw them hold
+            if (any || gear[4] != null) seenGear.put(other.getName(), gear);
+        }
+    }
+
+    /** Puts the player's real (last seen) armor on the fake, or their team's default leather if never seen. */
+    private void dress(FakePlayer p, String name) {
+        ItemStack[] gear = seenGear.get(name);
+        if (gear != null) {
+            for (int i = 0; i < 4; i++) p.inventory.armorInventory[i] = gear[i] == null ? null : gear[i].copy();
+            return;
+        }
+        // Bedwars start: full leather dyed in the team color.
+        int rgb = teamRgb(teamColor(name));
+        if (rgb < 0) return; // not in a team game: no armor
+        net.minecraft.item.Item[] leather = {Items.leather_boots, Items.leather_leggings, Items.leather_chestplate,
+                Items.leather_helmet};
+        for (int i = 0; i < 4; i++) {
+            ItemStack s = new ItemStack(leather[i]);
+            ((net.minecraft.item.ItemArmor) leather[i]).setColor(s, rgb);
+            p.inventory.armorInventory[i] = s;
+        }
+    }
+
+    /** The sword they were last seen holding, or null. */
+    private ItemStack seenSword(String name) {
+        ItemStack[] gear = seenGear.get(name);
+        return gear == null || gear[4] == null ? null : gear[4].copy();
+    }
+
+    private static int teamRgb(String code) {
+        if (code == null) return -1;
+        switch (code.charAt(1)) {
+            case 'c': case '4': return 0xFF0000;
+            case '9': case '1': return 0x0000FF;
+            case 'a': case '2': return 0x00FF00;
+            case 'e': return 0xFFFF00;
+            case '6': return 0xFF8000;
+            case 'b': case '3': return 0x00FFFF;
+            case 'd': return 0xFF55FF;
+            case '5': return 0x8000FF;
+            case '8': case '7': return 0x808080;
+            case '0': return 0x000000;
+            default: return 0xFFFFFF;
+        }
     }
 
     private void add(Fake f) {
