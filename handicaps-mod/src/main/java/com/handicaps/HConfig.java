@@ -76,7 +76,15 @@ final class HConfig {
         order.clear();
         enabled = bool(GENERAL, "enabled", true, "Master switch for all handicaps. The 'Toggle all handicaps' key pauses them instantly.");
 
-        shortSight = bool(SIGHT, "enabled", true, "You can only see this far; everything beyond fades into fog.");
+        shortSight = bool(SIGHT, "enabled", false, "You can only see this far; everything beyond fades into fog.");
+        // One-time update: 1.0.0 shipped with short sight on by default. Everything now starts off.
+        Property version = cfg.get(GENERAL, "configVersion", 1, "Internal; don't change.");
+        version.setShowInGui(false);
+        if (version.getInt() < 2) {
+            cfg.get(SIGHT, "enabled", false).set(false);
+            shortSight = false;
+            version.set(2);
+        }
         sightDistance = slider(SIGHT, "distance", 4f, 1f, 48f, "How far you can see, in blocks.");
         fogSoftness = slider(SIGHT, "softness", 1.5f, 0f, 16f, "How many blocks the fade takes (0 = hard wall).");
         Property fc = cfg.get(SIGHT, "color", "Black", "Fog color.", FOG_COLORS);
