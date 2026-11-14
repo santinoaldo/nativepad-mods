@@ -16,7 +16,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Keyboard;
 
-@Mod(modid = "nativepad", name = "NativePad", version = "1.3.2", clientSideOnly = true,
+@Mod(modid = "nativepad", name = "NativePad", version = "1.4.0", clientSideOnly = true,
         acceptedMinecraftVersions = "[1.8.9]", guiFactory = "com.nativepad.GuiFactory")
 public class NativePad {
 
@@ -44,6 +44,7 @@ public class NativePad {
         MinecraftForge.EVENT_BUS.register(handler);
         feedback = new Feedback(handler);
         MinecraftForge.EVENT_BUS.register(feedback);
+        MinecraftForge.EVENT_BUS.register(new Overlay(handler));
         MinecraftForge.EVENT_BUS.register(this);
         ClientCommandHandler.instance.registerCommand(new PadCommand());
 

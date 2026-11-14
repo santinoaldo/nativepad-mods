@@ -633,6 +633,11 @@ public final class ControllerHandler {
         return padIndex;
     }
 
+    /** The latest controller reading (for the overlay). */
+    XInput.PadState state() {
+        return state;
+    }
+
     void chat(String msg) {
         if (mc.thePlayer != null) {
             mc.thePlayer.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "[NativePad] " + msg));

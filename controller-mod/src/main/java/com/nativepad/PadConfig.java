@@ -22,8 +22,13 @@ import java.util.Map;
 public final class PadConfig {
 
     static final String GENERAL = "general", AIM = "aim", MOVEMENT = "movement",
-            TRIGGERS = "triggers", MENU = "menu", BUTTONS = "buttons", RUMBLE = "rumble", BATTERY = "battery";
-    private static final String[] GUI_CATEGORIES = {GENERAL, AIM, MOVEMENT, TRIGGERS, MENU, RUMBLE, BATTERY};
+            TRIGGERS = "triggers", MENU = "menu", BUTTONS = "buttons", RUMBLE = "rumble", BATTERY = "battery",
+            OVERLAY = "overlay";
+    private static final String[] GUI_CATEGORIES = {GENERAL, AIM, MOVEMENT, TRIGGERS, MENU, RUMBLE, BATTERY, OVERLAY};
+
+    // Controller overlay
+    public String overlayHud = HUD_OFF;
+    public float overlayScale;
     static final String HUD_OFF = "Off", HUD_TOP_LEFT = "Top left", HUD_TOP_RIGHT = "Top right",
             HUD_BOTTOM_LEFT = "Bottom left", HUD_BOTTOM_RIGHT = "Bottom right";
 
@@ -154,6 +159,14 @@ public final class PadConfig {
         batteryHud = hud.getString();
         batteryWarning = bool(BATTERY, "warning", true, "Chat warning when the controller battery gets low.");
 
+        Property ov = cfg.get(OVERLAY, "position", HUD_BOTTOM_RIGHT,
+                "Shows a small controller on screen that lights up as you press buttons and move the sticks.",
+                new String[]{HUD_OFF, HUD_TOP_LEFT, HUD_TOP_RIGHT, HUD_BOTTOM_LEFT, HUD_BOTTOM_RIGHT});
+        ov.setLanguageKey("nativepad." + OVERLAY + ".position");
+        track(OVERLAY, "position");
+        overlayHud = ov.getString();
+        overlayScale = slider(OVERLAY, "scale", 1.0f, 0.5f, 2.5f, "Size of the controller overlay.");
+
         category(GENERAL, "");
         category(AIM, "How the camera turns.");
         category(MOVEMENT, "How you walk.");
@@ -161,6 +174,7 @@ public final class PadConfig {
         category(MENU, "Left stick cursor in menus.\nA = click, X = right click, RB = shift-click, B/Start = back.\nD-pad = jump between slots/buttons.");
         category(RUMBLE, "Vibration on game events.");
         category(BATTERY, "Controller battery indicator. Wireless only; some controllers don't report it.");
+        category(OVERLAY, "A live drawing of your controller on screen: buttons, triggers and sticks light up as you use them.");
 
         cfg.setCategoryComment(BUTTONS, "Controller button -> action. Use the in-game Controller Bindings screen,\n"
                 + "or: SWAP_LAST, HOTBAR_PREV, HOTBAR_NEXT, PAUSE, NONE, or key:<key binding name> (e.g. key:key.jump).");

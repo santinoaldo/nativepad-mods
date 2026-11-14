@@ -5,7 +5,7 @@ Native Xbox-style (XInput) controller support for Minecraft 1.8.9. No Steam Inpu
 ## Install
 
 1. In the Modrinth App, open your 1.8.9 **Forge** profile → **Add content / Open folder** → `mods`.
-2. Drop `NativePad-1.3.2.jar` in.
+2. Drop `NativePad-1.4.0.jar` in.
 3. **Turn off Steam Input for this game**, or just launch Modrinth normally instead of through Steam.
    Otherwise Steam and the mod both act on the controller and you'll get double input.
 4. Make sure the controller is in **XInput / PC mode** (it should show up as an Xbox controller in Windows).
@@ -39,6 +39,8 @@ Good picks: paddle = **A** (jump without leaving the right stick) and paddle = *
 
 **Battery indicator:** shows the controller battery in a corner (settings → Battery indicator) when Windows reports it. Controllers that connect through a USB wireless dongle (EasySMX included) report as "wired" with no battery level, so nothing is shown for them.
 
+**Controller overlay:** a small live drawing of your controller in the bottom right corner. Buttons light up when pressed (A/B/X/Y in their colors), the trigger bars fill as you pull LT/RT, and the stick dots move with your sticks (yellow when clicked in). Change the corner, size, or turn it off in settings → Controller overlay. It only displays; it doesn't change any input.
+
 The last-slot swap also has a keyboard bind (Options → Controls → NativePad), so it works for keyboard play too.
 
 ## Tuning
@@ -63,4 +65,4 @@ You can also edit `config/nativepad.cfg` by hand and type `/nativepad reload`.
 
 ## Build from source
 
-Needs JDK 17. `gradlew build` → `build/libs/nativepad-1.3.2.jar`.
+Needs JDK 17. `gradlew build` → `build/libs/nativepad-1.4.0.jar`.

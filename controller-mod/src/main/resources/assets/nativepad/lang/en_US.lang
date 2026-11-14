@@ -29,4 +29,7 @@ nativepad.rumble.chatAlerts=Chat alerts (bed, trap)
 nativepad.rumble.chatPhrases=Chat alert phrases
 nativepad.battery.position=Show battery
 nativepad.battery.warning=Low battery warning
+nativepad.cat.overlay=Controller overlay
+nativepad.overlay.position=Show overlay
+nativepad.overlay.scale=Size
 nativepad.menu.stickSnap=Left stick snaps in inventories
