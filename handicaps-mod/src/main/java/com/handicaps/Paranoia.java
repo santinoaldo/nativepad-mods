@@ -150,7 +150,7 @@ final class Paranoia {
                 // voice pitch; one side often lands a short combo. Footsteps as they strafe; sometimes a death.
                 float pitchA = 0.9f + rnd.nextFloat() * 0.1f, pitchB = 1.05f + rnd.nextFloat() * 0.1f;
                 float d = 8f + rnd.nextFloat() * 6f;
-                int hits = 6 + rnd.nextInt(7);
+                int hits = 3 + rnd.nextInt(2); // short exchange: 3-4 hits
                 long t = now;
                 boolean aHit = rnd.nextBoolean();
                 for (int i = 0; i < hits; i++) {
