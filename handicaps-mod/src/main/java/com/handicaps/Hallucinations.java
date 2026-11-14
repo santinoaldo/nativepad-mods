@@ -845,13 +845,36 @@ final class Hallucinations {
 
     private void spawnFireball() {
         EntityPlayerSP p = mc.thePlayer;
-        // From 18 blocks (the minimum) up to 2.5x that (45 blocks), so some arrive fast and some from far off.
-        double[] s = startPoint(18 + rnd.nextDouble() * 27, 2 + rnd.nextDouble() * 4);
-        // Lands 2-3 blocks in front of you (where you're facing), a little to either side.
-        double look = Math.toRadians(p.rotationYaw), side = look + Math.PI / 2;
-        double ahead = 2 + rnd.nextDouble(), offset = (rnd.nextDouble() - 0.5) * 1.4;
-        double ex = p.posX - Math.sin(look) * ahead - Math.sin(side) * offset;
-        double ez = p.posZ + Math.cos(look) * ahead + Math.cos(side) * offset;
+        // Where it goes, like a real (imperfect) shot: mostly short of you, sometimes a near miss to the side,
+        // sometimes over your head, sometimes right at your feet.
+        float roll = rnd.nextFloat();
+        int kind = roll < 0.40f ? 0 : roll < 0.65f ? 1 : roll < 0.80f ? 2 : 3; // short, side miss, overshoot, hit
+        // From 18 blocks (the minimum) up to 2.5x that (45 blocks); overshoots are lobbed from higher up.
+        double height = kind == 2 ? 9 + rnd.nextDouble() * 5 : 2 + rnd.nextDouble() * 4;
+        double[] s = startPoint(18 + rnd.nextDouble() * 27, height);
+        // Directions relative to the fireball's own flight: u = toward you, v = sideways.
+        double ux = p.posX - s[0], uz = p.posZ - s[2], ul = Math.sqrt(ux * ux + uz * uz);
+        ux /= ul;
+        uz /= ul;
+        double vx = -uz, vz = ux, along, across;
+        switch (kind) {
+            case 0: // lands 2-4 blocks in front of you, a little to either side
+                along = -(2 + rnd.nextDouble() * 2);
+                across = (rnd.nextDouble() - 0.5) * 2;
+                break;
+            case 1: // flies past 2-4 blocks to your side and hits the ground just beyond you
+                along = rnd.nextDouble() * 3;
+                across = (rnd.nextBoolean() ? 1 : -1) * (2 + rnd.nextDouble() * 2);
+                break;
+            case 2: // goes over your head and lands 4-8 blocks behind you
+                along = 4 + rnd.nextDouble() * 4;
+                across = (rnd.nextDouble() - 0.5) * 2;
+                break;
+            default: // right at your feet
+                along = (rnd.nextDouble() - 0.5) * 0.8;
+                across = (rnd.nextDouble() - 0.5) * 0.8;
+        }
+        double ex = p.posX + ux * along + vx * across, ez = p.posZ + uz * along + vz * across;
         double ey = p.posY + 0.3;
         double dist = Math.sqrt((ex - s[0]) * (ex - s[0]) + (ey - s[1]) * (ey - s[1]) + (ez - s[2]) * (ez - s[2]));
         add(new FireballFake(s[0], s[1], s[2], ex, ey, ez, Math.max(10, (int) (dist / 1.1))));
