@@ -39,13 +39,19 @@ final class HConfig {
     boolean deaf;
     boolean drunk;
     float drunkStrength;
-    boolean paranoia, paranoiaFootsteps, paranoiaWool, paranoiaFall, paranoiaCombat, paranoiaItems;
+    boolean paranoia;
+    private final java.util.EnumMap<ParanoiaSound, Boolean> paranoiaSounds = new java.util.EnumMap<ParanoiaSound, Boolean>(ParanoiaSound.class);
     float paranoiaEvery;
     String paranoiaSet;
 
     HConfig(File file) {
         cfg = new Configuration(file);
         load();
+    }
+
+    boolean paranoiaOn(ParanoiaSound s) {
+        Boolean b = paranoiaSounds.get(s);
+        return b == null || b;
     }
 
     boolean active() {
@@ -118,11 +124,18 @@ final class HConfig {
         set.setLanguageKey("handicaps." + PARANOIA + ".soundSet");
         track(PARANOIA, "soundSet");
         paranoiaSet = set.getString();
-        paranoiaFootsteps = bool(PARANOIA, "footsteps", true, "Footsteps on wool, stone or wood walking up behind you.");
-        paranoiaWool = bool(PARANOIA, "wool", true, "Someone bridging toward you, or breaking wool.");
-        paranoiaFall = bool(PARANOIA, "fallDamage", true, "Fall damage thuds.");
-        paranoiaCombat = bool(PARANOIA, "combat", true, "Bow shots, TNT fuses, fireballs, ender pearls.");
-        paranoiaItems = bool(PARANOIA, "items", true, "Someone eating a golden apple or drinking a potion.");
+        // 1.1.0's grouped toggles are replaced by one setting per sound.
+        for (String old : new String[]{"footsteps", "wool", "fallDamage", "combat", "items"}) {
+            if (cfg.getCategory(PARANOIA).containsKey(old)) cfg.getCategory(PARANOIA).remove(old);
+        }
+        // One on/off per sound, each shown with a Test button next to it.
+        for (ParanoiaSound s : ParanoiaSound.values()) {
+            Property p = cfg.get(PARANOIA, s.key, true, s.label + ".");
+            p.setLanguageKey("handicaps." + PARANOIA + "." + s.key);
+            p.setConfigEntryClass(GuiFactory.SoundToggleEntry.class);
+            track(PARANOIA, s.key);
+            paranoiaSounds.put(s, p.getBoolean(true));
+        }
 
         category(GENERAL, "General", "");
         category(SIGHT, "Short sight (fog)", "You can only see a few blocks.");

@@ -13,16 +13,17 @@ import java.util.Random;
 
 /**
  * Paranoia: fake sounds from behind you, at a real position in the world so your headphones place them.
- * Only sounds you'd actually hear in Bedwars (the "Bedwars" sound set); other modes can get their own sets.
  * Client-side only: nobody else hears them, nothing is sent to the server.
  */
 final class Paranoia {
+
+    static Paranoia instance;
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private final Random rnd = new Random();
     private long nextEventAt;
 
-    /** A sound waiting to play: when, what, where (as distance/angle behind the player). */
+    /** A sound waiting to play: when, what, where (distance and angle relative to where you face). */
     private static final class Pending {
         final long at;
         final String sound;
@@ -39,32 +40,58 @@ final class Paranoia {
     }
 
     private final List<Pending> queue = new ArrayList<Pending>();
+    /** Sounds from Test buttons; they play even while Paranoia is off. */
+    private final List<Pending> testQueue = new ArrayList<Pending>();
+
+    Paranoia() {
+        instance = this;
+    }
+
+    /** Test button: play this sound exactly as Paranoia would, right now. */
+    void test(ParanoiaSound s) {
+        if (mc.thePlayer == null) {
+            // Not in a world (title screen): just play it straight through your speakers.
+            mc.getSoundHandler().playSound(PositionedSoundRecord.create(new ResourceLocation(s.sound), 1.0f));
+            return;
+        }
+        testQueue.addAll(build(s, System.currentTimeMillis()));
+    }
 
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent e) {
         if (e.phase != TickEvent.Phase.END) return;
-        HConfig c = Handicaps.config;
         EntityPlayerSP p = mc.thePlayer;
         long now = System.currentTimeMillis();
-        if (p == null || mc.theWorld == null || !c.active() || !c.paranoia) {
+        if (p == null) {
+            queue.clear();
+            testQueue.clear();
+            return;
+        }
+        playDue(testQueue, p, now);
+
+        HConfig c = Handicaps.config;
+        if (mc.theWorld == null || !c.active() || !c.paranoia) {
             queue.clear();
             nextEventAt = 0;
             return;
         }
         if (nextEventAt == 0) nextEventAt = now + randomGap(c);
+        playDue(queue, p, now);
+        if (now >= nextEventAt && queue.isEmpty()) {
+            List<ParanoiaSound> on = new ArrayList<ParanoiaSound>();
+            for (ParanoiaSound s : ParanoiaSound.values()) if (c.paranoiaOn(s)) on.add(s);
+            if (!on.isEmpty()) queue.addAll(build(on.get(rnd.nextInt(on.size())), now));
+            nextEventAt = now + randomGap(c);
+        }
+    }
 
-        // Play anything that's due.
-        for (int i = 0; i < queue.size(); i++) {
-            Pending s = queue.get(i);
+    private void playDue(List<Pending> list, EntityPlayerSP p, long now) {
+        for (int i = 0; i < list.size(); i++) {
+            Pending s = list.get(i);
             if (now >= s.at) {
                 play(p, s);
-                queue.remove(i--);
+                list.remove(i--);
             }
-        }
-
-        if (now >= nextEventAt && queue.isEmpty()) {
-            startEvent(c, now);
-            nextEventAt = now + randomGap(c);
         }
     }
 
@@ -73,77 +100,68 @@ final class Paranoia {
         return (long) (c.paranoiaEvery * 1000 * (0.5 + rnd.nextDouble()));
     }
 
-    private void startEvent(HConfig c, long now) {
-        List<Integer> kinds = new ArrayList<Integer>();
-        if (c.paranoiaFootsteps) kinds.add(0);
-        if (c.paranoiaWool) {
-            kinds.add(1);
-            kinds.add(2);
-        }
-        if (c.paranoiaFall) kinds.add(3);
-        if (c.paranoiaCombat) kinds.add(4);
-        if (c.paranoiaItems) kinds.add(5);
-        if (kinds.isEmpty()) return;
-
+    /** The sequence of sounds for one event. */
+    private List<Pending> build(ParanoiaSound s, long now) {
+        List<Pending> out = new ArrayList<Pending>();
         // Behind you: within 70 degrees either side of straight back.
         float angle = 180f + (rnd.nextFloat() * 140f - 70f);
-        switch (kinds.get(rnd.nextInt(kinds.size()))) {
-            case 0: { // Someone sneaking/walking up behind you
-                String[] surfaces = {"step.cloth", "step.cloth", "step.stone", "step.wood"};
-                String surface = surfaces[rnd.nextInt(surfaces.length)];
+        switch (s) {
+            case STEPS_WOOL:
+            case STEPS_STONE:
+            case STEPS_WOOD: { // Someone walking up behind you
                 int steps = 4 + rnd.nextInt(6);
                 float from = 10f + rnd.nextFloat() * 4f, to = 2.5f + rnd.nextFloat() * 2f;
                 long interval = 300 + rnd.nextInt(120);
                 for (int i = 0; i < steps; i++) {
                     float d = from + (to - from) * i / (steps - 1f);
-                    queue.add(new Pending(now + i * interval, surface, 0.25f, 0.9f + rnd.nextFloat() * 0.2f, d,
+                    out.add(new Pending(now + i * interval, s.sound, 0.25f, 0.9f + rnd.nextFloat() * 0.2f, d,
                             angle + rnd.nextFloat() * 6f - 3f));
                 }
                 break;
             }
-            case 1: { // Someone bridging toward you
+            case BRIDGING: { // Wool being placed, getting closer
                 int blocks = 4 + rnd.nextInt(6);
                 float from = 12f, to = 4f + rnd.nextFloat() * 2f;
                 long interval = 220 + rnd.nextInt(100);
                 for (int i = 0; i < blocks; i++) {
                     float d = from + (to - from) * i / (blocks - 1f);
-                    queue.add(new Pending(now + i * interval, "dig.cloth", 1.0f, 0.8f, d, angle));
+                    out.add(new Pending(now + i * interval, s.sound, 1.0f, 0.8f, d, angle));
                 }
                 break;
             }
-            case 2: { // Someone breaking wool (your bed defense?)
+            case WOOL_BREAK: { // Someone breaking wool (your bed defense?)
                 int breaks = 1 + rnd.nextInt(3);
                 float d = 5f + rnd.nextFloat() * 6f;
+                long t = now;
                 for (int i = 0; i < breaks; i++) {
-                    queue.add(new Pending(now + i * (350 + rnd.nextInt(250)), "dig.cloth", 1.0f, 0.8f, d, angle));
+                    out.add(new Pending(t, s.sound, 1.0f, 0.8f, d, angle));
+                    t += 350 + rnd.nextInt(250);
                 }
                 break;
             }
-            case 3: // Someone landing behind you
-                queue.add(new Pending(now, rnd.nextBoolean() ? "game.player.hurt.fall.small" : "game.player.hurt.fall.big",
-                        1.0f, 0.9f + rnd.nextFloat() * 0.2f, 3f + rnd.nextFloat() * 5f, angle));
-                break;
-            case 4: { // Combat: bow, TNT, fireball, pearl
-                String[] combat = {"random.bow", "game.tnt.primed", "mob.ghast.fireball", "mob.endermen.portal"};
-                String s = combat[rnd.nextInt(combat.length)];
-                queue.add(new Pending(now, s, 1.0f, s.equals("random.bow") ? 0.9f + rnd.nextFloat() * 0.3f : 1.0f,
-                        4f + rnd.nextFloat() * 8f, angle));
-                break;
-            }
-            default: { // Eating a golden apple / drinking a potion
-                boolean eat = rnd.nextBoolean();
-                int n = eat ? 5 + rnd.nextInt(3) : 1;
+            case EATING: { // A golden apple: several bites
+                int bites = 5 + rnd.nextInt(3);
                 float d = 3f + rnd.nextFloat() * 4f;
-                for (int i = 0; i < n; i++) {
-                    queue.add(new Pending(now + i * 200, eat ? "random.eat" : "random.drink",
-                            0.5f, 0.9f + rnd.nextFloat() * 0.2f, d, angle));
+                for (int i = 0; i < bites; i++) {
+                    out.add(new Pending(now + i * 200, s.sound, 0.5f, 0.9f + rnd.nextFloat() * 0.2f, d, angle));
                 }
+                break;
             }
+            case BOW:
+                out.add(new Pending(now, s.sound, 1.0f, 0.9f + rnd.nextFloat() * 0.3f, 4f + rnd.nextFloat() * 8f, angle));
+                break;
+            case FALL_SMALL:
+            case FALL_BIG:
+                out.add(new Pending(now, s.sound, 1.0f, 0.9f + rnd.nextFloat() * 0.2f, 3f + rnd.nextFloat() * 5f, angle));
+                break;
+            default: // TNT, fireball, pearl, drinking: one sound
+                out.add(new Pending(now, s.sound, s == ParanoiaSound.DRINKING ? 0.5f : 1.0f, 1.0f,
+                        4f + rnd.nextFloat() * 6f, angle));
         }
+        return out;
     }
 
     private void play(EntityPlayerSP p, Pending s) {
-        // Angle is relative to where you're facing, so the sound stays behind you even if you turn a little.
         double yaw = Math.toRadians(p.rotationYaw + s.angle);
         double x = p.posX - Math.sin(yaw) * s.distance;
         double z = p.posZ + Math.cos(yaw) * s.distance;
