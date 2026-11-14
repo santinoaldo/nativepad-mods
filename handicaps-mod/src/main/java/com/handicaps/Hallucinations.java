@@ -365,9 +365,11 @@ final class Hallucinations {
         private final int y, wool;
         private final float faceYaw;
         private int reached;                 // last cell whose block has been placed / step started
+        /** Speed bridging (stand up, only crouch for a moment at each edge) instead of holding crouch. */
+        private final boolean speed;
 
         BridgerFake(int[] cx, int[] cz, boolean[] needsBlock, int[] segStart, int y, float faceYaw,
-                    GameProfile profile, int wool, List<BlockPos> trail) {
+                    GameProfile profile, int wool, List<BlockPos> trail, boolean speed) {
             super(cx[0] + 0.5, y, cz[0] + 0.5, cx[cx.length - 1] + 0.5, y, cz[cz.length - 1] + 0.5,
                     segStart[cx.length - 1] + 12); // plus a short pause at the end before vanishing
             this.cx = cx;
@@ -377,6 +379,7 @@ final class Hallucinations {
             this.y = y;
             this.wool = wool;
             this.faceYaw = faceYaw;
+            this.speed = speed;
             for (BlockPos b : trail) fakeBlocks.add(new FakeBlock(b, Blocks.wool.getStateFromMeta(wool), this));
             FakePlayer p = new FakePlayer(mc.theWorld, profile);
             p.inventory.setInventorySlotContents(0, new ItemStack(Blocks.wool, 64, wool));
@@ -412,6 +415,12 @@ final class Hallucinations {
                     break;
                 }
             }
+            // Crouching: slow bridgers hold it the whole way across; speed bridgers only tap it for ~2 ticks at
+            // each edge as the block goes down; on real ground both stand up and walk.
+            int cur = Math.max(1, reached);
+            boolean sneak = needsBlock[cur] && (!speed || age - segStart[cur - 1] < 2);
+            if (age >= segStart[last]) sneak = !speed; // stopped at the end
+            p.setSneaking(sneak);
             p.setPositionAndRotation2(x, y, z, faceYaw, 75, 3, false);
             p.rotationYawHead = faceYaw;
         }
@@ -482,14 +491,18 @@ final class Hallucinations {
                         trail.add(below);
                     }
                 }
+                // 1.8.9 speeds: walking 4.317 blocks/s, crouching x0.3 = 1.295 blocks/s (backwards is no slower).
+                // Slow bridging holds crouch: a block every 15-17 ticks (~1.2-1.3 blocks/s). Speed bridging only
+                // crouches at each edge: a block every 7-8 ticks (~2.5-2.9 blocks/s). Real ground: plain walking.
+                boolean speed = rnd.nextFloat() < 0.4f;
                 int[] segStart = new int[n];
                 for (int i = 1; i < n; i++) {
-                    // ~2.2 blocks/s, a normal crouch-bridging pace (a block every 8-10 ticks); a bit quicker over real ground.
-                    segStart[i] = segStart[i - 1] + (need[i] ? 8 + rnd.nextInt(3) : 6);
+                    int perBlock = speed ? 7 + rnd.nextInt(2) : 15 + rnd.nextInt(3);
+                    segStart[i] = segStart[i - 1] + (need[i] ? perBlock : 5);
                 }
                 float yaw = (float) Math.toDegrees(Math.atan2(mx, -mz)); // facing back along their bridge
                 GameProfile profile = randomProfile();
-                add(new BridgerFake(cx, cz, need, segStart, y, yaw, profile, teamWool(profile.getName()), trail));
+                add(new BridgerFake(cx, cz, need, segStart, y, yaw, profile, teamWool(profile.getName()), trail, speed));
                 return true;
             }
         }
