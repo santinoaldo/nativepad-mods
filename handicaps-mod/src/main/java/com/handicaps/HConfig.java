@@ -16,8 +16,8 @@ import java.util.Map;
 final class HConfig {
 
     static final String GENERAL = "general", SIGHT = "shortsight", BLUR = "nearsighted", GRAY = "grayscale",
-            TUNNEL = "tunnel", DEAF = "deaf", DRUNK = "drunk";
-    private static final String[] CATEGORIES = {GENERAL, SIGHT, BLUR, GRAY, TUNNEL, DEAF, DRUNK};
+            TUNNEL = "tunnel", DEAF = "deaf", DRUNK = "drunk", PARANOIA = "paranoia";
+    private static final String[] CATEGORIES = {GENERAL, SIGHT, BLUR, GRAY, TUNNEL, DEAF, DRUNK, PARANOIA};
     static final String[] FOG_COLORS = {"Black", "Gray", "White", "Dark red"};
 
     private final Configuration cfg;
@@ -39,6 +39,9 @@ final class HConfig {
     boolean deaf;
     boolean drunk;
     float drunkStrength;
+    boolean paranoia, paranoiaFootsteps, paranoiaWool, paranoiaFall, paranoiaCombat, paranoiaItems;
+    float paranoiaEvery;
+    String paranoiaSet;
 
     HConfig(File file) {
         cfg = new Configuration(file);
@@ -109,6 +112,18 @@ final class HConfig {
         drunk = bool(DRUNK, "enabled", false, "Swaying camera, wobbly double vision and drifting aim.");
         drunkStrength = slider(DRUNK, "strength", 0.6f, 0.1f, 2f, "How drunk.");
 
+        paranoia = bool(PARANOIA, "enabled", false, "Fake sounds from behind you: footsteps sneaking up, bridging, wool breaking, fall damage, combat.");
+        paranoiaEvery = slider(PARANOIA, "every", 25f, 5f, 120f, "About how many seconds between fake sounds (randomized).");
+        Property set = cfg.get(PARANOIA, "soundSet", "Bedwars", "Which game's sounds to fake.", new String[]{"Bedwars"});
+        set.setLanguageKey("handicaps." + PARANOIA + ".soundSet");
+        track(PARANOIA, "soundSet");
+        paranoiaSet = set.getString();
+        paranoiaFootsteps = bool(PARANOIA, "footsteps", true, "Footsteps on wool, stone or wood walking up behind you.");
+        paranoiaWool = bool(PARANOIA, "wool", true, "Someone bridging toward you, or breaking wool.");
+        paranoiaFall = bool(PARANOIA, "fallDamage", true, "Fall damage thuds.");
+        paranoiaCombat = bool(PARANOIA, "combat", true, "Bow shots, TNT fuses, fireballs, ender pearls.");
+        paranoiaItems = bool(PARANOIA, "items", true, "Someone eating a golden apple or drinking a potion.");
+
         category(GENERAL, "General", "");
         category(SIGHT, "Short sight (fog)", "You can only see a few blocks.");
         category(BLUR, "Near-sighted (blur)", "Far things get blurry.");
@@ -116,6 +131,7 @@ final class HConfig {
         category(TUNNEL, "Tunnel vision", "Dark edges.");
         category(DEAF, "Deaf", "No sound.");
         category(DRUNK, "Drunk", "Sway, wobble, drift.");
+        category(PARANOIA, "Paranoia", "Fake sounds behind you.");
 
         if (cfg.hasChanged()) cfg.save();
     }
