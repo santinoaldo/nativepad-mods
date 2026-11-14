@@ -5,7 +5,7 @@ Native Xbox-style (XInput) controller support for Minecraft 1.8.9. No Steam Inpu
 ## Install
 
 1. In the Modrinth App, open your 1.8.9 **Forge** profile → **Add content / Open folder** → `mods`.
-2. Drop `NativePad-1.3.1.jar` in.
+2. Drop `NativePad-1.3.2.jar` in.
 3. **Turn off Steam Input for this game**, or just launch Modrinth normally instead of through Steam.
    Otherwise Steam and the mod both act on the controller and you'll get double input.
 4. Make sure the controller is in **XInput / PC mode** (it should show up as an Xbox controller in Windows).
@@ -63,4 +63,4 @@ You can also edit `config/nativepad.cfg` by hand and type `/nativepad reload`.
 
 ## Build from source
 
-Needs JDK 17. `gradlew build` → `build/libs/nativepad-1.3.1.jar`.
+Needs JDK 17. `gradlew build` → `build/libs/nativepad-1.3.2.jar`.

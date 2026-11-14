@@ -413,6 +413,11 @@ public final class ControllerHandler {
 
     // ---- movement ----
 
+    /** Last snapped 8-way direction (-1 = none), for direction hysteresis. */
+    private int snappedDir = -1;
+    /** When the left stick last moved the player; read by ControllerMovementInput. */
+    static volatile long stickMovedAt;
+
     private void updateMoveStick(PadConfig cfg) {
         if (mc.currentScreen != null) {
             moveActive = false;
@@ -421,17 +426,32 @@ public final class ControllerHandler {
         }
         float x = state.lx, y = state.ly;
         float mag = (float) Math.sqrt(x * x + y * y);
-        if (mag < cfg.moveDeadzone) {
+        // Hysteresis: start moving past the deadzone, but only stop once clearly back inside it,
+        // so a stick resting near the edge doesn't flicker on/off (which Minecraft can read as a
+        // double-tap of forward and start sprinting).
+        float threshold = moveActive ? cfg.moveDeadzone * 0.7f : cfg.moveDeadzone;
+        if (mag < threshold) {
             moveActive = false;
             moveForward = moveStrafe = 0f;
+            snappedDir = -1;
             return;
         }
+        stickMovedAt = System.currentTimeMillis();
         if (!cfg.analogMovement) {
             // Keyboard-exact: snap to the nearest of 8 directions with values of exactly -1, 0 or 1,
             // the same inputs WASD can produce. Server anticheats predict movement from these
             // and pull you back (setback) for anything in between.
             double angle = Math.atan2(y, x);
-            double snapped = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+            double sector = Math.PI / 4;
+            int dir = (int) Math.round(angle / sector);
+            // Hysteresis: keep the current direction until the stick is clearly in the next one
+            // (no flicker between "forward" and "forward-left" right on the boundary).
+            if (snappedDir != -1 && dir != snappedDir) {
+                double diff = Math.abs(Math.IEEEremainder(angle - snappedDir * sector, 2 * Math.PI));
+                if (diff < sector / 2 + Math.toRadians(8)) dir = snappedDir;
+            }
+            snappedDir = dir;
+            double snapped = dir * sector;
             moveForward = Math.round(Math.sin(snapped));
             moveStrafe = -Math.round(Math.cos(snapped)); // vanilla: positive strafe = left
             moveActive = true;
