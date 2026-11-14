@@ -51,7 +51,8 @@ final class Paranoia {
     void test(ParanoiaSound s) {
         if (mc.thePlayer == null) {
             // Not in a world (title screen): just play it straight through your speakers.
-            mc.getSoundHandler().playSound(PositionedSoundRecord.create(new ResourceLocation(s.sound), 1.0f));
+            final float v = Math.max(0f, Math.min(1f, Handicaps.config.paranoiaVolume));
+            mc.getSoundHandler().playSound(new FlatSound(new ResourceLocation(s.sound), v));
             return;
         }
         testQueue.addAll(build(s, System.currentTimeMillis()));
@@ -179,6 +180,16 @@ final class Paranoia {
         double z = p.posZ + Math.cos(yaw) * s.distance;
         double y = p.posY + (rnd.nextFloat() - 0.5f);
         mc.getSoundHandler().playSound(new PositionedSoundRecord(new ResourceLocation(s.sound),
-                s.volume, s.pitch, (float) x, (float) y, (float) z));
+                s.volume * Math.max(0f, Math.min(1f, Handicaps.config.paranoiaVolume)), s.pitch, (float) x, (float) y, (float) z));
+    }
+
+    /** A non-positional sound at a chosen volume (for Test buttons outside a world). */
+    private static final class FlatSound extends net.minecraft.client.audio.PositionedSound {
+        FlatSound(ResourceLocation sound, float volume) {
+            super(sound);
+            this.volume = volume;
+            this.pitch = 1.0f;
+            this.attenuationType = net.minecraft.client.audio.ISound.AttenuationType.NONE;
+        }
     }
 }

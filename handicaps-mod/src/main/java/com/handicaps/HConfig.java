@@ -41,7 +41,7 @@ final class HConfig {
     float drunkStrength;
     boolean paranoia;
     private final java.util.EnumMap<ParanoiaSound, Boolean> paranoiaSounds = new java.util.EnumMap<ParanoiaSound, Boolean>(ParanoiaSound.class);
-    float paranoiaEvery;
+    float paranoiaEvery, paranoiaVolume;
     String paranoiaSet;
 
     HConfig(File file) {
@@ -120,6 +120,7 @@ final class HConfig {
 
         paranoia = bool(PARANOIA, "enabled", false, "Fake sounds from behind you: footsteps sneaking up, bridging, wool breaking, fall damage, combat.");
         paranoiaEvery = slider(PARANOIA, "every", 25f, 5f, 120f, "About how many seconds between fake sounds (randomized).");
+        paranoiaVolume = slider(PARANOIA, "volume", 1f, 0f, 1f, "Volume of the fake sounds and the Test buttons (1 = normal game volume).");
         Property set = cfg.get(PARANOIA, "soundSet", "Bedwars", "Which game's sounds to fake.", new String[]{"Bedwars"});
         set.setLanguageKey("handicaps." + PARANOIA + ".soundSet");
         track(PARANOIA, "soundSet");

@@ -5,7 +5,7 @@ things harder for you, so there's nothing for a server to flag.
 
 ## Install
 
-Drop `Handicaps-1.2.1.jar` in your 1.8.9 Forge profile's `mods` folder. Open the settings with
+Drop `Handicaps-1.2.2.jar` in your 1.8.9 Forge profile's `mods` folder. Open the settings with
 `/handicaps` (or Mods → Handicaps → Config). Everything starts off; turn on what you want.
 
 ## Handicaps
@@ -18,7 +18,7 @@ Drop `Handicaps-1.2.1.jar` in your 1.8.9 Forge profile's `mods` folder. Open the
 | **Tunnel vision** | A dark ring closes in from the screen edges (the HUD stays readable on top). | visible area, edge softness |
 | **Deaf** | No game sounds or music (menu clicks still play). | |
 | **Drunk** | Swaying, tilting camera, wobbly double vision, and your aim slowly drifts. | strength |
-| **Paranoia** | Fake Bedwars sounds from behind you: footsteps sneaking up (wool, stone, wood), someone bridging toward you or breaking wool, fall damage, bow shots, TNT fuses, fireballs, ender pearls, eating and drinking. They come from a real direction, only you hear them. | how often (about every 25 s), sound set (Bedwars; more game modes later), and an on/off switch **per sound** (13 of them) with a **Test** button next to each that plays it right away |
+| **Paranoia** | Fake Bedwars sounds from behind you: footsteps sneaking up (wool, stone, wood), someone bridging toward you or breaking wool, fall damage, bow shots, TNT fuses, fireballs, ender pearls, eating and drinking. They come from a real direction, only you hear them. | how often (about every 25 s), volume, sound set (Bedwars; more game modes later), and an on/off switch **per sound** (13 of them) with a **Test** button next to each that plays it right away |
 
 They stack: try short sight + grayscale + deaf.
 
@@ -37,4 +37,4 @@ Both can go on a controller button with NativePad's Controller Bindings.
 
 ## Build
 
-Needs JDK 17: `gradlew build` → `build/libs/handicaps-1.2.1.jar`. MIT license.
+Needs JDK 17: `gradlew build` → `build/libs/handicaps-1.2.2.jar`. MIT license.
