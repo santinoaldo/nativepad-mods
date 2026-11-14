@@ -145,6 +145,29 @@ final class Paranoia {
                 }
                 break;
             }
+            case FIGHT: { // Two players trading hits somewhere behind you
+                // 1.8 hit pace: a player can only take a hit every 10 ticks (0.5 s). Each player has their own
+                // voice pitch; one side often lands a short combo. Footsteps as they strafe; sometimes a death.
+                float pitchA = 0.9f + rnd.nextFloat() * 0.1f, pitchB = 1.05f + rnd.nextFloat() * 0.1f;
+                float d = 8f + rnd.nextFloat() * 6f;
+                int hits = 6 + rnd.nextInt(7);
+                long t = now;
+                boolean aHit = rnd.nextBoolean();
+                for (int i = 0; i < hits; i++) {
+                    if (rnd.nextFloat() < 0.4f) aHit = !aHit; // sometimes a combo, sometimes trading
+                    float drift = angle + (float) Math.sin(i * 0.9) * 8f;
+                    out.add(new Pending(t, s.sound, 1.0f, (aHit ? pitchA : pitchB) + (rnd.nextFloat() - 0.5f) * 0.05f,
+                            d + rnd.nextFloat() * 1.5f, drift));
+                    if (rnd.nextBoolean()) {
+                        out.add(new Pending(t + 250, rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.2f, 1.0f, d, drift));
+                    }
+                    t += 450 + rnd.nextInt(250);
+                }
+                if (rnd.nextFloat() < 0.35f) {
+                    out.add(new Pending(t, "game.player.die", 1.0f, aHit ? pitchA : pitchB, d, angle));
+                }
+                break;
+            }
             case DRINKING: { // A potion: vanilla plays the gulp every 4 ticks for the last ~25 ticks of the drink
                 float d = 3f + rnd.nextFloat() * 4f;
                 for (int i = 0; i < 7; i++) {

@@ -89,9 +89,11 @@ public final class GuiFactory implements IModGuiFactory {
 
         @Override
         public boolean mousePressed(int index, int x, int y, int mouseEvent, int relativeX, int relativeY) {
-            if (sound != null && test.mousePressed(mc, x, y)) {
+            boolean hallucination = configElement.getName().startsWith("fake");
+            if ((sound != null || hallucination) && test.mousePressed(mc, x, y)) {
                 test.playPressSound(mc.getSoundHandler());
-                if (Paranoia.instance != null) Paranoia.instance.test(sound);
+                if (sound != null && Paranoia.instance != null) Paranoia.instance.test(sound);
+                if (hallucination && Hallucinations.instance != null) Hallucinations.instance.test(configElement.getName());
                 return true;
             }
             return super.mousePressed(index, x, y, mouseEvent, relativeX, relativeY);

@@ -17,7 +17,8 @@ enum ParanoiaSound {
     FIREBALL("fireball", "Fireball", "mob.ghast.fireball"),
     PEARL("pearl", "Ender pearl landing", "mob.endermen.portal"),
     EATING("eating", "Eating (golden apple)", "random.eat"),
-    DRINKING("drinking", "Drinking (potion)", "random.drink");
+    DRINKING("drinking", "Drinking (potion)", "random.drink"),
+    FIGHT("fight", "A fight nearby", "game.player.hurt");
 
     /** Config key, shown label, Minecraft 1.8.9 sound name (all verified to exist). */
     final String key, label, sound;

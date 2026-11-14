@@ -16,8 +16,8 @@ import java.util.Map;
 final class HConfig {
 
     static final String GENERAL = "general", SIGHT = "shortsight", BLUR = "nearsighted", GRAY = "grayscale",
-            TUNNEL = "tunnel", DEAF = "deaf", DRUNK = "drunk", PARANOIA = "paranoia";
-    private static final String[] CATEGORIES = {GENERAL, SIGHT, BLUR, GRAY, TUNNEL, DEAF, DRUNK, PARANOIA};
+            TUNNEL = "tunnel", DEAF = "deaf", DRUNK = "drunk", PARANOIA = "paranoia", HALLU = "hallucinations";
+    private static final String[] CATEGORIES = {GENERAL, SIGHT, BLUR, GRAY, TUNNEL, DEAF, DRUNK, PARANOIA, HALLU};
     static final String[] FOG_COLORS = {"Black", "Gray", "White", "Dark red"};
 
     private final Configuration cfg;
@@ -42,6 +42,8 @@ final class HConfig {
     boolean paranoia;
     private final java.util.EnumMap<ParanoiaSound, Boolean> paranoiaSounds = new java.util.EnumMap<ParanoiaSound, Boolean>(ParanoiaSound.class);
     float paranoiaEvery, paranoiaVolume;
+    boolean hallucinations, fakeFireballs, fakePlayers;
+    float hallucinationEvery;
     String paranoiaSet;
 
     HConfig(File file) {
@@ -138,6 +140,12 @@ final class HConfig {
             paranoiaSounds.put(s, p.getBoolean(true));
         }
 
+        hallucinations = bool(HALLU, "enabled", false,
+                "Fake fireballs and players that only you can see. They can't hurt you and can't be hit.");
+        hallucinationEvery = slider(HALLU, "every", 45f, 10f, 180f, "About how many seconds between hallucinations (randomized).");
+        fakeFireballs = hallu("fakeFireball", "A fireball flies at you and 'explodes' next to you (no damage).");
+        fakePlayers = hallu("fakePlayer", "A player from the tab list sprints at you with a sword, then vanishes.");
+
         category(GENERAL, "General", "");
         category(SIGHT, "Short sight (fog)", "You can only see a few blocks.");
         category(BLUR, "Near-sighted (blur)", "Far things get blurry.");
@@ -146,6 +154,7 @@ final class HConfig {
         category(DEAF, "Deaf", "No sound.");
         category(DRUNK, "Drunk", "Sway, wobble, drift.");
         category(PARANOIA, "Paranoia", "Fake sounds behind you.");
+        category(HALLU, "Hallucinations", "Fake things only you can see.");
 
         if (cfg.hasChanged()) cfg.save();
     }
@@ -177,6 +186,15 @@ final class HConfig {
             p.set(def);
         }
         return (float) v;
+    }
+
+    /** A hallucination on/off row with a Test button. */
+    private boolean hallu(String key, String comment) {
+        Property p = cfg.get(HALLU, key, true, comment);
+        p.setLanguageKey("handicaps." + HALLU + "." + key);
+        p.setConfigEntryClass(GuiFactory.SoundToggleEntry.class);
+        track(HALLU, key);
+        return p.getBoolean(true);
     }
 
     private boolean bool(String cat, String name, boolean def, String comment) {
