@@ -46,3 +46,6 @@ handicaps.hallucinations.every=About every (seconds)
 handicaps.hallucinations.fakeFireball=Fake fireball
 handicaps.hallucinations.fakePlayer=Fake player rushing you
 handicaps.paranoia.fight=A fight nearby
+handicaps.hallucinations.fakeInvisible=Invisible player sneaking up
+handicaps.hallucinations.fakeArrow=Arrow flying past you
+handicaps.hallucinations.fakeBed=Fake "BED DESTROYED!"

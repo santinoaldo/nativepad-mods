@@ -195,6 +195,105 @@ final class Hallucinations {
         }
     }
 
+    // ---- invisible player: footprints and footsteps walking toward you, nobody there ----
+
+    private final class InvisibleFake extends Fake {
+        private boolean leftFoot;
+
+        InvisibleFake(double sx, double sy, double sz, double ex, double ey, double ez, int ticks) {
+            super(sx, sy, sz, ex, ey, ez, ticks);
+        }
+
+        @Override
+        void place(double t) {
+            if (age % 5 != 0) return; // a step every quarter second (walking, maybe sneaking up)
+            // Footprints alternate left and right of the walking line, like the invisibility footprints in Bedwars.
+            double dx = ex - sx, dz = ez - sz, len = Math.sqrt(dx * dx + dz * dz);
+            double side = (leftFoot ? 1 : -1) * 0.15;
+            leftFoot = !leftFoot;
+            double x = x(t) + (-dz / len) * side, z = z(t) + (dx / len) * side;
+            mc.theWorld.spawnParticle(EnumParticleTypes.FOOTSTEP, x, y(t) + 0.01, z, 0, 0, 0);
+            sound(rnd.nextBoolean() ? "step.cloth" : "step.stone", 0.2f, 1.0f, x, y(t), z);
+        }
+    }
+
+    private void spawnInvisible() {
+        EntityPlayerSP p = mc.thePlayer;
+        double y = Math.floor(p.posY + 0.01);
+        for (int attempt = 0; attempt < 24; attempt++) {
+            // Can come from anywhere around you, including behind.
+            double yaw = Math.toRadians(p.rotationYaw + rnd.nextDouble() * 360), dist = 8 + rnd.nextDouble() * 6;
+            double sx = p.posX - Math.sin(yaw) * dist, sz = p.posZ + Math.cos(yaw) * dist;
+            double dx = p.posX - sx, dz = p.posZ - sz, len = Math.sqrt(dx * dx + dz * dz);
+            double ex = p.posX - dx / len * 1.2, ez = p.posZ - dz / len * 1.2;
+            if (!walkable(sx, y, sz, ex, ez)) continue;
+            int ticks = Math.max(10, (int) ((len - 1.2) / 0.2)); // walking pace ~4 blocks/s
+            add(new InvisibleFake(sx, y, sz, ex, y, ez, ticks));
+            return;
+        }
+    }
+
+    // ---- arrow fly-by: shot from far away, whizzes past your head, sticks in something behind you ----
+
+    private final class ArrowFake extends Fake {
+        private final float yaw, pitch;
+
+        ArrowFake(double sx, double sy, double sz, double ex, double ey, double ez, int ticks) {
+            super(sx, sy, sz, ex, ey, ez, ticks);
+            net.minecraft.entity.projectile.EntityArrow a = new net.minecraft.entity.projectile.EntityArrow(mc.theWorld);
+            double dx = ex - sx, dy = ey - sy, dz = ez - sz;
+            yaw = (float) Math.toDegrees(Math.atan2(dx, dz));
+            pitch = (float) Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
+            a.setPositionAndRotation(sx, sy, sz, yaw, pitch);
+            a.prevRotationYaw = yaw;
+            a.prevRotationPitch = pitch;
+            entity = a;
+            sound("random.bow", 0.7f, 1.0f / (rnd.nextFloat() * 0.4f + 1.2f) + 0.5f, sx, sy, sz); // the distant shot
+        }
+
+        @Override
+        void place(double t) {
+            entity.motionX = entity.motionY = entity.motionZ = 0;
+            entity.setPosition(x(t), y(t), z(t));
+            entity.rotationYaw = entity.prevRotationYaw = yaw;
+            entity.rotationPitch = entity.prevRotationPitch = pitch;
+        }
+
+        @Override
+        void finish() {
+            sound("random.bowhit", 1.0f, 1.2f / (rnd.nextFloat() * 0.2f + 0.9f), ex, ey, ez); // thunk
+        }
+    }
+
+    private void spawnArrow() {
+        EntityPlayerSP p = mc.thePlayer;
+        double[] s = startPoint(20 + rnd.nextDouble() * 15, 1 + rnd.nextDouble() * 3);
+        // Passes about a block beside your head, then keeps going 8 blocks behind you.
+        double look = Math.toRadians(p.rotationYaw), side = look + Math.PI / 2;
+        double passOffset = (rnd.nextBoolean() ? 1 : -1) * (0.8 + rnd.nextDouble() * 0.6);
+        double px = p.posX - Math.sin(side) * passOffset, pz = p.posZ + Math.cos(side) * passOffset;
+        double py = p.posY + p.getEyeHeight();
+        double dx = px - s[0], dy = py - s[1], dz = pz - s[2], len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        double ex = px + dx / len * 8, ey = py + dy / len * 8, ez = pz + dz / len * 8;
+        int ticks = Math.max(6, (int) ((len + 8) / 2.0)); // arrows are fast: ~40 blocks/s
+        add(new ArrowFake(s[0], s[1], s[2], ex, ey, ez, ticks));
+    }
+
+    // ---- fake "BED DESTROYED!" ----
+
+    private void fakeBedDestroyed() {
+        // The Hypixel Bedwars bed-break alert: big red title, subtitle, wither sound, chat line.
+        mc.ingameGUI.displayTitle(null, null, 10, 60, 20); // timings first, like the server sends them
+        mc.ingameGUI.displayTitle(null, "§fYou will no longer respawn!", -1, -1, -1);
+        mc.ingameGUI.displayTitle("§c§lBED DESTROYED!", null, -1, -1, -1);
+        EntityPlayerSP p = mc.thePlayer;
+        sound("mob.wither.death", 1.0f, 1.0f, p.posX, p.posY, p.posZ);
+        String by = randomProfile().getName();
+        String[] how = {"was destroyed by", "was dismantled by", "was iced by", "got sent to the shadow realm by"};
+        p.addChatMessage(new net.minecraft.util.ChatComponentText("\n§f§lBED DESTRUCTION > §7Your Bed "
+                + how[rnd.nextInt(how.length)] + " §c" + by + "§7!\n"));
+    }
+
     // ---- scheduling ----
 
     /** Test button: show this hallucination right now (even if Hallucinations are off). */
@@ -202,6 +301,9 @@ final class Hallucinations {
         if (mc.thePlayer == null || mc.theWorld == null) return;
         if ("fakeFireball".equals(key)) spawnFireball();
         else if ("fakePlayer".equals(key)) spawnPlayer();
+        else if ("fakeInvisible".equals(key)) spawnInvisible();
+        else if ("fakeArrow".equals(key)) spawnArrow();
+        else if ("fakeBed".equals(key)) fakeBedDestroyed();
     }
 
     @SubscribeEvent
@@ -222,7 +324,7 @@ final class Hallucinations {
             f.place(t);
             if (t >= 1.0) {
                 f.finish();
-                w.removeEntityFromWorld(f.id);
+                if (f.entity != null) w.removeEntityFromWorld(f.id);
                 active.remove(i--);
             }
         }
@@ -238,6 +340,9 @@ final class Hallucinations {
             List<String> on = new ArrayList<String>();
             if (c.fakeFireballs) on.add("fakeFireball");
             if (c.fakePlayers) on.add("fakePlayer");
+            if (c.fakeInvisible) on.add("fakeInvisible");
+            if (c.fakeArrow) on.add("fakeArrow");
+            if (c.fakeBed) on.add("fakeBed");
             if (!on.isEmpty()) test(on.get(rnd.nextInt(on.size())));
             nextAt = now + gap(c);
         }
@@ -323,7 +428,7 @@ final class Hallucinations {
     }
 
     private void add(Fake f) {
-        mc.theWorld.addEntityToWorld(f.id, f.entity);
+        if (f.entity != null) mc.theWorld.addEntityToWorld(f.id, f.entity);
         active.add(f);
     }
 
