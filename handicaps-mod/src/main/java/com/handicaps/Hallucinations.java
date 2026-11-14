@@ -323,7 +323,7 @@ final class Hallucinations {
         private int reached;                 // last cell whose block has been placed / step started
 
         BridgerFake(int[] cx, int[] cz, boolean[] needsBlock, int[] segStart, int y, float faceYaw,
-                    GameProfile profile, int wool) {
+                    GameProfile profile, int wool, List<BlockPos> trail) {
             super(cx[0] + 0.5, y, cz[0] + 0.5, cx[cx.length - 1] + 0.5, y, cz[cz.length - 1] + 0.5,
                     segStart[cx.length - 1] + 12); // plus a short pause at the end before vanishing
             this.cx = cx;
@@ -333,6 +333,7 @@ final class Hallucinations {
             this.y = y;
             this.wool = wool;
             this.faceYaw = faceYaw;
+            for (BlockPos b : trail) fakeBlocks.add(new FakeBlock(b, Blocks.wool.getStateFromMeta(wool), this));
             FakePlayer p = new FakePlayer(mc.theWorld, profile);
             p.inventory.setInventorySlotContents(0, new ItemStack(Blocks.wool, 64, wool));
             p.inventory.currentItem = 0;
@@ -379,8 +380,9 @@ final class Hallucinations {
     }
 
     /**
-     * Finds a real place to bridge from: solid ground in front of you (or to the side), with open air
-     * between it and you at your floor level. Returns false (and shows nothing) if there's no such spot.
+     * Finds a line in front of you (or to the side) with open air between it and you at your floor level.
+     * If they start over the void, the bridge they've already built trails behind them.
+     * Returns false (and shows nothing) if there's no gap to bridge across.
      */
     private boolean spawnBridger() {
         EntityPlayerSP p = mc.thePlayer;
@@ -418,7 +420,20 @@ final class Hallucinations {
                             blocks++;
                         } else ok = false; // water, lava, plants: not a clean gap to bridge
                     }
-                    if (!ok || need[0] || blocks < 3) continue; // must start on real ground and actually bridge
+                    if (!ok || blocks < 3) continue; // must actually bridge across a gap
+                    // Starting over the void: they're already partway across, so the bridge they've built so far
+                    // trails out behind them (back toward wherever they came from, or until it reaches land).
+                    List<BlockPos> trail = new ArrayList<BlockPos>();
+                    if (need[0]) {
+                        trail.add(new BlockPos(cx[0], y - 1, cz[0]));
+                        int len = 6 + rnd.nextInt(12);
+                        for (int k = 1; k <= len; k++) {
+                            int tx = cx[0] + d[0] * k, tz = cz[0] + d[1] * k;
+                            BlockPos below = new BlockPos(tx, y - 1, tz);
+                            if (solid(tx, y, tz) || solid(tx, y + 1, tz) || !mc.theWorld.isAirBlock(below)) break;
+                            trail.add(below);
+                        }
+                    }
                     int[] segStart = new int[n];
                     for (int i = 1; i < n; i++) {
                         // ~2.2 blocks/s, a normal crouch-bridging pace (a block every 8-10 ticks); a bit quicker over real ground.
@@ -426,7 +441,7 @@ final class Hallucinations {
                     }
                     float yaw = (float) Math.toDegrees(Math.atan2(-d[0], d[1])); // facing away from you
                     GameProfile profile = randomProfile();
-                    add(new BridgerFake(cx, cz, need, segStart, y, yaw, profile, teamWool(profile.getName())));
+                    add(new BridgerFake(cx, cz, need, segStart, y, yaw, profile, teamWool(profile.getName()), trail));
                     return true;
                 }
             }
