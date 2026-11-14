@@ -16,7 +16,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Keyboard;
 
-@Mod(modid = "nativepad", name = "NativePad", version = "1.4.3", clientSideOnly = true,
+@Mod(modid = "nativepad", name = "NativePad", version = "1.4.4", clientSideOnly = true,
         acceptedMinecraftVersions = "[1.8.9]", guiFactory = "com.nativepad.GuiFactory")
 public class NativePad {
 
