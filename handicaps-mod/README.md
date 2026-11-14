@@ -5,7 +5,7 @@ things harder for you, so there's nothing for a server to flag.
 
 ## Install
 
-Drop `Handicaps-1.2.0.jar` in your 1.8.9 Forge profile's `mods` folder. Open the settings with
+Drop `Handicaps-1.2.1.jar` in your 1.8.9 Forge profile's `mods` folder. Open the settings with
 `/handicaps` (or Mods → Handicaps → Config). Everything starts off; turn on what you want.
 
 ## Handicaps
@@ -37,4 +37,4 @@ Both can go on a controller button with NativePad's Controller Bindings.
 
 ## Build
 
-Needs JDK 17: `gradlew build` → `build/libs/handicaps-1.2.0.jar`. MIT license.
+Needs JDK 17: `gradlew build` → `build/libs/handicaps-1.2.1.jar`. MIT license.

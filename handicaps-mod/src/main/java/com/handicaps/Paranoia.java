@@ -129,13 +129,25 @@ final class Paranoia {
                 }
                 break;
             }
-            case WOOL_BREAK: { // Someone breaking wool (your bed defense?)
-                int breaks = 1 + rnd.nextInt(3);
+            case WOOL_BREAK: { // Someone breaking 1-2 wool blocks by hand (no shears), like at your bed
+                // Vanilla: wool by hand takes ~1.2 s. While mining, a soft low "hit" (step.cloth, quiet,
+                // half pitch) plays every 4 ticks, then the break sound (dig.cloth, pitch 0.8).
+                int blocks = 1 + rnd.nextInt(2);
                 float d = 5f + rnd.nextFloat() * 6f;
                 long t = now;
-                for (int i = 0; i < breaks; i++) {
-                    out.add(new Pending(t, s.sound, 1.0f, 0.8f, d, angle));
-                    t += 350 + rnd.nextInt(250);
+                for (int b = 0; b < blocks; b++) {
+                    for (int hit = 0; hit < 6; hit++) {
+                        out.add(new Pending(t + hit * 200, "step.cloth", 0.25f, 0.5f, d, angle));
+                    }
+                    out.add(new Pending(t + 1200, s.sound, 1.0f, 0.8f, d, angle));
+                    t += 1200 + 250 + rnd.nextInt(200); // move to the next block
+                }
+                break;
+            }
+            case DRINKING: { // A potion: vanilla plays the gulp every 4 ticks for the last ~25 ticks of the drink
+                float d = 3f + rnd.nextFloat() * 4f;
+                for (int i = 0; i < 7; i++) {
+                    out.add(new Pending(now + 350 + i * 200, s.sound, 0.5f, 0.9f + rnd.nextFloat() * 0.1f, d, angle));
                 }
                 break;
             }
@@ -154,8 +166,8 @@ final class Paranoia {
             case FALL_BIG:
                 out.add(new Pending(now, s.sound, 1.0f, 0.9f + rnd.nextFloat() * 0.2f, 3f + rnd.nextFloat() * 5f, angle));
                 break;
-            default: // TNT, fireball, pearl, drinking: one sound
-                out.add(new Pending(now, s.sound, s == ParanoiaSound.DRINKING ? 0.5f : 1.0f, 1.0f,
+            default: // TNT, fireball, pearl: one sound
+                out.add(new Pending(now, s.sound, 1.0f, 1.0f,
                         4f + rnd.nextFloat() * 6f, angle));
         }
         return out;
