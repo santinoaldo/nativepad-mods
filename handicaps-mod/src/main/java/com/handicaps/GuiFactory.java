@@ -145,6 +145,47 @@ public final class GuiFactory implements IModGuiFactory {
         }
     }
 
+    /**
+     * A main-list row: the category button (opens its settings) plus an ON/OFF button right next to it,
+     * so a handicap can be switched without opening it.
+     */
+    public static final class ToggleCategoryEntry extends GuiConfigEntries.CategoryEntry {
+        private static final int TOGGLE_WIDTH = 50, GAP = 4;
+        private final net.minecraftforge.fml.client.config.GuiButtonExt toggle;
+
+        public ToggleCategoryEntry(GuiConfig owningScreen, GuiConfigEntries owningEntryList, IConfigElement element) {
+            super(owningScreen, owningEntryList, element);
+            // Same total width as before, so the undo/reset buttons don't move.
+            btnSelectCategory.width -= TOGGLE_WIDTH + GAP;
+            toggle = new net.minecraftforge.fml.client.config.GuiButtonExt(0, 0, 0, TOGGLE_WIDTH, 18, "");
+        }
+
+        @Override
+        public void drawEntry(int slotIndex, int x, int y, int listWidth, int slotHeight, int mouseX, int mouseY, boolean isSelected) {
+            super.drawEntry(slotIndex, x, y, listWidth, slotHeight, mouseX, mouseY, isSelected);
+            boolean on = Handicaps.config.isOn(configElement.getName());
+            toggle.displayString = on ? "ON" : "OFF";
+            toggle.packedFGColour = on
+                    ? net.minecraftforge.fml.client.config.GuiUtils.getColorCode('a', true)
+                    : net.minecraftforge.fml.client.config.GuiUtils.getColorCode('c', true);
+            toggle.xPosition = btnSelectCategory.xPosition + btnSelectCategory.width + GAP;
+            toggle.yPosition = y;
+            toggle.drawButton(mc, mouseX, mouseY);
+        }
+
+        @Override
+        public boolean mousePressed(int index, int x, int y, int mouseEvent, int relativeX, int relativeY) {
+            if (toggle.mousePressed(mc, x, y)) {
+                toggle.playPressSound(mc.getSoundHandler());
+                String cat = configElement.getName();
+                Handicaps.config.setOn(cat, !Handicaps.config.isOn(cat)); // saved and applied right away
+                childScreen = buildChildScreen(); // so the settings inside show the new value
+                return true;
+            }
+            return super.mousePressed(index, x, y, mouseEvent, relativeX, relativeY);
+        }
+    }
+
     /** Forge's number slider, always showing two decimals. */
     public static final class DecimalSliderEntry extends GuiConfigEntries.NumberSliderEntry {
         public DecimalSliderEntry(GuiConfig owningScreen, GuiConfigEntries owningEntryList, IConfigElement element) {

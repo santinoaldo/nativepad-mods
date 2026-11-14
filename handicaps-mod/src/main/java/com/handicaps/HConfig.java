@@ -51,6 +51,18 @@ final class HConfig {
         load();
     }
 
+    /** Each settings section's main switch (the "enabled" setting in that section). */
+    boolean isOn(String category) {
+        return cfg.getCategory(category).containsKey("enabled") && cfg.getCategory(category).get("enabled").getBoolean(false);
+    }
+
+    /** Flip a section's main switch from the main list; saved and applied immediately. */
+    void setOn(String category, boolean on) {
+        cfg.get(category, "enabled", false).set(on);
+        cfg.save();
+        load();
+    }
+
     boolean paranoiaOn(ParanoiaSound s) {
         Boolean b = paranoiaSounds.get(s);
         return b == null || b;
@@ -72,7 +84,10 @@ final class HConfig {
 
     List<IConfigElement> guiElements() {
         List<IConfigElement> list = new ArrayList<IConfigElement>();
-        for (String c : CATEGORIES) list.add(new ConfigElement(cfg.getCategory(c)));
+        for (String c : CATEGORIES) {
+            cfg.getCategory(c).setConfigEntryClass(GuiFactory.ToggleCategoryEntry.class); // row with an ON/OFF button
+            list.add(new ConfigElement(cfg.getCategory(c)));
+        }
         return list;
     }
 
